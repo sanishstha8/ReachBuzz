@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% load static ui %}
+
+{% block body_class %}auth-shell{% endblock %}
+
+{% comment %} The sign-in page replaces the whole authenticated layout. {% endcomment %}
+{% block layout %}
+<main id="main-content" class="auth-wrapper">
+  <section class="auth-card" aria-labelledby="loginHeading">
+    <div class="auth-card__brand">
+      <i class="bi bi-whatsapp" aria-hidden="true"></i>
+      <span>{{ site_name }}</span>
+    </div>
+
+    <h1 id="loginHeading" class="h4 mb-1">Sign in</h1>
+    <p class="text-body-secondary mb-4">Authorized operators only.</p>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:login' %}" novalidate>
+      {% csrf_token %}
+
+      <div class="mb-3">
+        <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+        {{ form.username }}
+        {% if form.username.errors %}
+          <div class="invalid-feedback d-block">{{ form.username|field_errors }}</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+        {{ form.password }}
+        {% if form.password.errors %}
+          <div class="invalid-feedback d-block">{{ form.password|field_errors }}</div>
+        {% endif %}
+      </div>
+
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+      <button type="submit" class="btn btn-primary btn-lg w-100">
+        <span class="btn-label">Sign in</span>
+        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+      </button>
+    </form>
+
+    <p class="auth-card__footer">
+      {% if support_email %}
+        Trouble signing in? Contact <a href="mailto:{{ support_email }}">{{ support_email }}</a>.
+      {% else %}
+        Trouble signing in? Contact your administrator.
+      {% endif %}
+    </p>
+  </section>
+</main>
+{% endblock layout %}
+
+{% block extra_js %}
+<script>
+  // Disable the submit button while the request is in flight so a double
+  // click cannot produce two login attempts.
+  document.querySelector('form').addEventListener('submit', function (event) {
+    const button = event.target.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.querySelector('.spinner-border').classList.remove('d-none');
+    button.querySelector('.btn-label').textContent = 'Signing in…';
+  });
+</script>
+{% endblock %}

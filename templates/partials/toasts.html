@@ -1,0 +1,18 @@
+{% load ui %}{% comment %}
+Django messages are rendered as Bootstrap toasts. static/js/toast.js exposes
+window.toast(message, level) so AJAX flows can raise the same notification.
+{% endcomment %}
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" aria-live="polite" aria-atomic="true">
+  {% for message in messages %}
+    <div class="toast align-items-center border-0 text-bg-{{ message.level_tag|bootstrap_colour }}"
+         role="{% if message.level >= 40 %}alert{% else %}status{% endif %}"
+         data-bs-autohide="{% if message.level >= 40 %}false{% else %}true{% endif %}" data-bs-delay="6000">
+      <div class="d-flex">
+        <div class="toast-body">{{ message }}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  {% endfor %}
+</div>

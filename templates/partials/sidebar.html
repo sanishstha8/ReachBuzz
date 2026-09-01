@@ -1,0 +1,24 @@
+{% comment %}
+Primary navigation. Rendered twice: as a fixed sidebar on large screens and as
+an off-canvas drawer on small ones. Items for modules that are not installed
+yet are shown disabled rather than hidden, so the roadmap is visible.
+{% endcomment %}
+
+{% with nav=active_nav %}
+  <nav class="app-sidebar d-none d-lg-flex" aria-label="Main navigation">
+    {% include "partials/_nav_items.html" %}
+  </nav>
+
+  <div class="offcanvas offcanvas-start app-sidebar-offcanvas" tabindex="-1" id="sidebarOffcanvas"
+       aria-label="Main navigation">
+    <div class="offcanvas-header">
+      <span class="app-brand">{{ site_name }}</span>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body p-0">
+      <nav class="app-sidebar app-sidebar--offcanvas" aria-label="Main navigation">
+        {% include "partials/_nav_items.html" %}
+      </nav>
+    </div>
+  </div>
+{% endwith %}

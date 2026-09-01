@@ -1,0 +1,57 @@
+{% comment %}
+Shared pagination control. Preserves the current filters via `querystring`,
+which list views set to request.GET minus the page parameter.
+
+Note: `page_obj.next_page_number` raises EmptyPage on the last page (and
+`previous_page_number` on the first), and a template filter cannot catch that,
+so both are guarded by has_next / has_previous rather than defaulted.
+{% endcomment %}
+
+{% if is_paginated %}
+  <nav class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2"
+       aria-label="Pagination">
+    <span class="small text-body-secondary">
+      Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+    </span>
+
+    <ul class="pagination pagination-sm mb-0">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{ page_obj.previous_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">
+            <span aria-hidden="true">&laquo;</span><span class="visually-hidden">Previous page</span>
+          </a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link" aria-hidden="true">&laquo;</span>
+        </li>
+      {% endif %}
+
+      {% for num in page_obj.paginator.page_range %}
+        {% if num == page_obj.number %}
+          <li class="page-item active" aria-current="page">
+            <span class="page-link">{{ num }}</span>
+          </li>
+        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <li class="page-item">
+            <a class="page-link" href="?page={{ num }}{% if querystring %}&amp;{{ querystring }}{% endif %}">{{ num }}</a>
+          </li>
+        {% endif %}
+      {% endfor %}
+
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?page={{ page_obj.next_page_number }}{% if querystring %}&amp;{{ querystring }}{% endif %}">
+            <span aria-hidden="true">&raquo;</span><span class="visually-hidden">Next page</span>
+          </a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link" aria-hidden="true">&raquo;</span>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+{% endif %}

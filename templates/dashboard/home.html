@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Signed in as {{ user.display_name }} ({{ user.get_role_display }}).</p>
+{% endblock %}
+
+{% block content %}
+
+{% if is_mock_provider %}
+  <div class="alert alert-warning d-flex gap-3 align-items-start" role="status">
+    <i class="bi bi-cone-striped fs-5" aria-hidden="true"></i>
+    <div>
+      <strong>Mock provider active.</strong>
+      Campaigns are simulated locally. Nothing is sent to WhatsApp until
+      <code>WHATSAPP_PROVIDER=meta</code> is configured with valid Meta credentials.
+    </div>
+  </div>
+{% endif %}
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">Audience</h2>
+<div class="row g-3 mb-4">
+  {% if contact_stats %}
+    {% include "dashboard/partials/stat_card.html" with label="Contacts" value=contact_stats.total icon="people" hint="in the address book" %}
+    {% include "dashboard/partials/stat_card.html" with label="Opted in" value=contact_stats.opted_in icon="check2-circle" hint="consent on record" %}
+    {% include "dashboard/partials/stat_card.html" with label="Can be messaged" value=contact_stats.eligible icon="send-check" hint="opted in and active" %}
+    {% include "dashboard/partials/stat_card.html" with label="Groups" value=contact_stats.groups icon="collection" hint="audiences" %}
+  {% else %}
+    {% include "dashboard/partials/stat_card.html" with label="Contacts" value=None icon="people" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Opted in" value=None icon="check2-circle" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Can be messaged" value=None icon="send-check" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Groups" value=None icon="collection" hint="not available" %}
+  {% endif %}
+</div>
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">Messaging</h2>
+<div class="row g-3 mb-4">
+  {% if campaign_stats %}
+    {% include "dashboard/partials/stat_card.html" with label="Campaigns" value=campaign_stats.total icon="megaphone" hint="all time" %}
+  {% else %}
+    {% include "dashboard/partials/stat_card.html" with label="Campaigns" value=None icon="megaphone" hint="not available" %}
+  {% endif %}
+
+  {% if message_stats %}
+    {% include "dashboard/partials/stat_card.html" with label="Messages sent" value=message_stats.sent icon="send" hint="accepted by provider" %}
+    {% include "dashboard/partials/stat_card.html" with label="Delivered" value=message_stats.delivered icon="check2-all" hint="reached the handset" %}
+    {% include "dashboard/partials/stat_card.html" with label="Read" value=message_stats.read icon="eye" hint="opened" %}
+    {% include "dashboard/partials/stat_card.html" with label="Failed" value=message_stats.failed icon="exclamation-triangle" hint="see campaign detail" %}
+    {% include "dashboard/partials/stat_card.html" with label="Pending" value=message_stats.pending icon="hourglass-split" hint="not yet sent" %}
+  {% else %}
+    {% include "dashboard/partials/stat_card.html" with label="Messages sent" value=None icon="send" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Delivered" value=None icon="check2-all" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Read" value=None icon="eye" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Failed" value=None icon="exclamation-triangle" hint="not available" %}
+    {% include "dashboard/partials/stat_card.html" with label="Pending" value=None icon="hourglass-split" hint="not available" %}
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-7">
+    <section class="card app-card h-100" aria-labelledby="recentHeading">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 id="recentHeading" class="h6 mb-0">Recent campaigns</h2>
+        {% if recent_campaigns %}
+          <a href="{% url 'campaigns:list' %}" class="small">View all</a>
+        {% endif %}
+      </div>
+
+      {% if recent_campaigns %}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <caption class="visually-hidden">Most recently created campaigns</caption>
+            <thead>
+              <tr>
+                <th scope="col">Campaign</th>
+                <th scope="col" class="text-end">Recipients</th>
+                <th scope="col" class="text-end">Delivered</th>
+                <th scope="col" class="text-end">Failed</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for campaign in recent_campaigns %}
+                <tr>
+                  <th scope="row" class="fw-normal">
+                    <a href="{% url 'campaigns:detail' campaign.pk %}">{{ campaign.name }}</a>
+                  </th>
+                  <td class="text-end">
+                    {% if campaign.message_count %}
+                      {{ campaign.message_count|intcomma }}
+                    {% else %}
+                      <span class="text-body-secondary">&mdash;</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if campaign.delivered_count %}
+                      {{ campaign.delivered_count|intcomma }}
+                    {% else %}
+                      <span class="text-body-secondary">&mdash;</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if campaign.failed_count %}
+                      <span class="text-danger">{{ campaign.failed_count|intcomma }}</span>
+                    {% else %}
+                      <span class="text-body-secondary">&mdash;</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% include "campaigns/partials/status_badge.html" with status=campaign.status label=campaign.get_status_display %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="card-body">
+          <div class="empty-state">
+            <i class="bi bi-megaphone" aria-hidden="true"></i>
+            <h3 class="h6">No campaigns yet</h3>
+            <p class="text-body-secondary">
+              A campaign pairs an audience with an approved template. You will see recipient
+              counts and a full preview before anything is sent.
+            </p>
+            {% if user.can_manage_campaigns %}
+              <a href="{% url 'campaigns:create' %}" class="btn btn-primary btn-sm mt-2">
+                Create a campaign
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card h-100" aria-labelledby="statusHeading">
+      <div class="card-header">
+        <h2 id="statusHeading" class="h6 mb-0">System status</h2>
+      </div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-7 text-body-secondary">Messaging provider</dt>
+          <dd class="col-5 text-end">
+            <span class="badge {% if is_mock_provider %}text-bg-warning{% else %}text-bg-success{% endif %}">
+              {{ system_status.provider }}
+            </span>
+          </dd>
+
+          <dt class="col-7 text-body-secondary">Message sender</dt>
+          <dd class="col-5 text-end">
+            {% if system_status.dispatcher_registered %}
+              <span class="badge text-bg-success">registered</span>
+            {% else %}
+              <span class="badge text-bg-secondary">not registered</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-7 text-body-secondary">Queue broker</dt>
+          <dd class="col-5 text-end">
+            {% if system_status.broker_reachable %}
+              <span class="badge text-bg-success">reachable</span>
+            {% else %}
+              <span class="badge text-bg-danger">unreachable</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-7 text-body-secondary">Send rate ceiling</dt>
+          <dd class="col-5 text-end">{{ system_status.send_rate_per_second }}/second</dd>
+
+          <dt class="col-7 text-body-secondary">Default country</dt>
+          <dd class="col-5 text-end">{{ system_status.default_country }}</dd>
+        </dl>
+
+        {% if not system_status.can_send %}
+          <div class="alert alert-warning small mt-3 mb-0" role="status">
+            <strong>Campaigns cannot be launched.</strong>
+            {{ system_status.broker_detail|default:"The sending pipeline is not ready." }}
+            Everything else — contacts, groups, campaign drafts and previews — works normally.
+          </div>
+        {% endif %}
+
+        <hr>
+
+        <h3 class="h6 text-body-secondary text-uppercase small">Modules</h3>
+        <ul class="list-unstyled small mb-0">
+          {% for name, installed in modules.items %}
+            <li class="d-flex justify-content-between py-1">
+              <span class="text-capitalize">{{ name }}</span>
+              {% if installed %}
+                <span class="text-success"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> ready</span>
+              {% else %}
+                <span class="text-body-secondary"><i class="bi bi-dash-circle" aria-hidden="true"></i> pending</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+{% endblock %}

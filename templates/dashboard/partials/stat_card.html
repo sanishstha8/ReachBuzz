@@ -1,0 +1,26 @@
+{% comment %}
+Reusable statistic tile.
+
+  {% include "dashboard/partials/stat_card.html" with label="Contacts" value=stats.contacts icon="people" %}
+
+`value` of None renders an em dash plus an optional `hint`, so the tile never
+displays a number the system cannot actually vouch for.
+{% endcomment %}
+
+<div class="col-6 col-lg-3">
+  <div class="card app-card stat-card h-100">
+    <div class="card-body">
+      <div class="stat-card__head">
+        <span class="stat-card__label">{{ label }}</span>
+        {% if icon %}<i class="bi bi-{{ icon }}" aria-hidden="true"></i>{% endif %}
+      </div>
+      {% if value is None %}
+        <div class="stat-card__value stat-card__value--empty" title="Not available yet">&mdash;</div>
+        {% if hint %}<div class="stat-card__hint">{{ hint }}</div>{% endif %}
+      {% else %}
+        <div class="stat-card__value">{{ value|default:"0" }}</div>
+        {% if hint %}<div class="stat-card__hint">{{ hint }}</div>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>

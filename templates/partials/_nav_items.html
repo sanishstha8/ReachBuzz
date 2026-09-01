@@ -1,0 +1,60 @@
+<div class="app-sidebar__brand d-none d-lg-flex">
+  <i class="bi bi-whatsapp" aria-hidden="true"></i>
+  <span>{{ site_name }}</span>
+</div>
+
+<ul class="app-nav">
+  <li>
+    <a class="app-nav__link {% if active_nav == 'dashboard' %}is-active{% endif %}"
+       href="{% url 'dashboard:home' %}" {% if active_nav == 'dashboard' %}aria-current="page"{% endif %}>
+      <i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span>
+    </a>
+  </li>
+
+  <li class="app-nav__section">Audience</li>
+  <li>
+    <a class="app-nav__link {% if active_nav == 'contacts' %}is-active{% endif %}"
+       href="{% url 'contacts:list' %}" {% if active_nav == 'contacts' %}aria-current="page"{% endif %}>
+      <i class="bi bi-people" aria-hidden="true"></i><span>Contacts</span>
+    </a>
+  </li>
+  <li>
+    <a class="app-nav__link {% if active_nav == 'groups' %}is-active{% endif %}"
+       href="{% url 'contacts:group-list' %}" {% if active_nav == 'groups' %}aria-current="page"{% endif %}>
+      <i class="bi bi-collection" aria-hidden="true"></i><span>Groups</span>
+    </a>
+  </li>
+
+  <li class="app-nav__section">Messaging</li>
+  <li>
+    <a class="app-nav__link {% if active_nav == 'campaigns' %}is-active{% endif %}"
+       href="{% url 'campaigns:list' %}" {% if active_nav == 'campaigns' %}aria-current="page"{% endif %}>
+      <i class="bi bi-megaphone" aria-hidden="true"></i><span>Campaigns</span>
+    </a>
+  </li>
+  <li>
+    <a class="app-nav__link {% if active_nav == 'templates' %}is-active{% endif %}"
+       href="{% url 'whatsapp:template-list' %}" {% if active_nav == 'templates' %}aria-current="page"{% endif %}>
+      <i class="bi bi-file-earmark-text" aria-hidden="true"></i><span>Templates</span>
+    </a>
+  </li>
+
+  <li class="app-nav__section">Account</li>
+  <li>
+    <a class="app-nav__link {% if active_nav == 'profile' %}is-active{% endif %}"
+       href="{% url 'accounts:profile' %}" {% if active_nav == 'profile' %}aria-current="page"{% endif %}>
+      <i class="bi bi-person-gear" aria-hidden="true"></i><span>My profile</span>
+    </a>
+  </li>
+  <li>
+    <a class="app-nav__link" href="{% url 'api-docs' %}">
+      <i class="bi bi-code-square" aria-hidden="true"></i><span>API docs</span>
+    </a>
+  </li>
+</ul>
+
+<div class="app-sidebar__footer">
+  <span class="badge {% if is_mock_provider %}text-bg-warning{% else %}text-bg-success{% endif %}">
+    provider: {{ whatsapp_provider }}
+  </span>
+</div>

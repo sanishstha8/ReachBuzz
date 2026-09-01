@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Upload a CSV file to add contacts in bulk.</p>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <div class="col-12 col-xl-7">
+    <section class="card app-card" aria-labelledby="uploadHeading">
+      <div class="card-header"><h2 id="uploadHeading" class="h6 mb-0">Upload file</h2></div>
+      <div class="card-body">
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" novalidate id="importForm">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.file.id_for_label }}">
+              {{ form.file.label }} <span class="text-danger" aria-hidden="true">*</span>
+            </label>
+            {{ form.file }}
+            <div class="form-text">{{ form.file.help_text }}</div>
+            {% if form.file.errors %}
+              <div class="invalid-feedback d-block">{{ form.file|field_errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.target_group.id_for_label }}">Add to group</label>
+            {{ form.target_group }}
+            <div class="form-text">{{ form.target_group.help_text }}</div>
+          </div>
+
+          <div class="form-check mb-3">
+            {{ form.update_existing }}
+            <label class="form-check-label" for="{{ form.update_existing.id_for_label }}">
+              {{ form.update_existing.label }}
+            </label>
+            <div class="form-text">{{ form.update_existing.help_text }}</div>
+          </div>
+
+          <div class="alert alert-light border">
+            <div class="form-check mb-0">
+              {{ form.confirm_consent }}
+              <label class="form-check-label" for="{{ form.confirm_consent.id_for_label }}">
+                {{ form.confirm_consent.label }} <span class="text-danger" aria-hidden="true">*</span>
+              </label>
+              {% if form.confirm_consent.errors %}
+                <div class="invalid-feedback d-block">{{ form.confirm_consent|field_errors }}</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="importSubmit">
+            <span class="btn-label"><i class="bi bi-upload me-1" aria-hidden="true"></i>Import contacts</span>
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+          </button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card mb-4" aria-labelledby="formatHeading">
+      <div class="card-header"><h2 id="formatHeading" class="h6 mb-0">Expected format</h2></div>
+      <div class="card-body">
+        <div class="overflow-x-auto">
+<pre class="small mb-3"><code>name,phone_number,email,opted_in
+Aarav Sharma,+9779800000000,aarav@example.com,true
+Sita Rai,+9779811111111,,yes
+Bikash Thapa,+9779822222222,,false</code></pre>
+        </div>
+
+        <ul class="small text-body-secondary ps-3 mb-3">
+          <li><strong>name</strong> and <strong>phone_number</strong> are required.</li>
+          <li><strong>email</strong>, <strong>opted_in</strong> and <strong>notes</strong> are optional.</li>
+          <li>Numbers are normalized to international format automatically.</li>
+          <li>Rows whose number already exists are reported as duplicates and skipped.</li>
+        </ul>
+
+        <a href="{% url 'contacts:import-sample' %}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-download me-1" aria-hidden="true"></i>Download sample CSV
+        </a>
+      </div>
+    </section>
+
+    <section class="card app-card border-warning" aria-labelledby="consentHeading">
+      <div class="card-header"><h2 id="consentHeading" class="h6 mb-0">How consent is handled</h2></div>
+      <div class="card-body small">
+        <p>
+          A contact is marked <strong>opted in only</strong> when the <code>opted_in</code> column holds
+          an explicit affirmative value: <code>true</code>, <code>yes</code>, <code>y</code>,
+          <code>1</code>, <code>consented</code> or <code>subscribed</code>.
+        </p>
+        <p class="mb-0">
+          Every other value — including a blank cell or a missing column — imports the contact
+          <strong>opted out</strong>. They are stored, but excluded from every campaign until
+          consent is recorded through a documented channel. An import never revokes consent
+          already on record.
+        </p>
+      </div>
+    </section>
+
+    {% if recent_imports %}
+      <section class="card app-card mt-4" aria-labelledby="recentHeading">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 id="recentHeading" class="h6 mb-0">Recent imports</h2>
+          <a href="{% url 'contacts:import-list' %}" class="small">View all</a>
+        </div>
+        <div class="card-body py-2">
+          <ul class="list-unstyled mb-0 small">
+            {% for item in recent_imports %}
+              <li class="d-flex justify-content-between align-items-center py-1">
+                <a href="{% url 'contacts:import-detail' item.pk %}" class="text-truncate me-2">{{ item.file_name }}</a>
+                <span class="text-body-secondary text-nowrap">{{ item.imported_count }} added</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Large files take a moment to process; make it obvious the upload is running
+  // and prevent a double submission creating two import records.
+  document.getElementById('importForm').addEventListener('submit', function (event) {
+    const button = document.getElementById('importSubmit');
+    if (!event.target.checkValidity || event.target.checkValidity()) {
+      button.disabled = true;
+      button.querySelector('.spinner-border').classList.remove('d-none');
+      button.querySelector('.btn-label').textContent = 'Importing…';
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8 col-xl-7">
+
+    <section class="card app-card" aria-labelledby="formHeading">
+      <div class="card-header">
+        <h2 id="formHeading" class="h6 mb-0">{{ page_title }}</h2>
+      </div>
+      <div class="card-body">
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ form.name.id_for_label }}">
+                Name <span class="text-danger" aria-hidden="true">*</span>
+              </label>
+              {{ form.name }}
+              {% if form.name.errors %}
+                <div class="invalid-feedback d-block">{{ form.name|field_errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ form.phone_number.id_for_label }}">
+                Phone number <span class="text-danger" aria-hidden="true">*</span>
+              </label>
+              {{ form.phone_number }}
+              <div class="form-text">
+                International format is safest, e.g. <code>+9779800000000</code>.
+                Numbers without a <code>+</code> are read as {{ system_default_country|default:"the configured default country" }}.
+              </div>
+              {% if form.phone_number.errors %}
+                <div class="invalid-feedback d-block">{{ form.phone_number|field_errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ form.email.id_for_label }}">Email <span class="text-body-secondary">(optional)</span></label>
+              {{ form.email }}
+              {% if form.email.errors %}
+                <div class="invalid-feedback d-block">{{ form.email|field_errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ form.status.id_for_label }}">Status</label>
+              {{ form.status }}
+              <div class="form-text">Only <strong>Active</strong> contacts can receive campaigns.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{ form.groups.id_for_label }}">Groups</label>
+              {{ form.groups }}
+              <div class="form-text">{{ form.groups.help_text }}</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{ form.notes.id_for_label }}">Notes</label>
+              {{ form.notes }}
+            </div>
+
+            <div class="col-12">
+              <div class="alert alert-light border">
+                <div class="form-check mb-0">
+                  {{ form.opted_in }}
+                  <label class="form-check-label" for="{{ form.opted_in.id_for_label }}">
+                    {{ form.opted_in.label }}
+                  </label>
+                  <div class="form-text">{{ form.opted_in.help_text }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">
+              {% if object %}Save changes{% else %}Create contact{% endif %}
+            </button>
+            <a href="{% if object %}{% url 'contacts:detail' object.pk %}{% else %}{% url 'contacts:list' %}{% endif %}"
+               class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

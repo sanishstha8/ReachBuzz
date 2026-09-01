@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-6">
+    <section class="card app-card" aria-labelledby="groupFormHeading">
+      <div class="card-header"><h2 id="groupFormHeading" class="h6 mb-0">{{ page_title }}</h2></div>
+      <div class="card-body">
+
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.name.id_for_label }}">
+              Name <span class="text-danger" aria-hidden="true">*</span>
+            </label>
+            {{ form.name }}
+            {% if form.name.errors %}
+              <div class="invalid-feedback d-block">{{ form.name|field_errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.description.id_for_label }}">Description</label>
+            {{ form.description }}
+            <div class="form-text">What this audience is for, so a colleague can tell groups apart.</div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              {% if object %}Save changes{% else %}Create group{% endif %}
+            </button>
+            <a href="{% if object %}{% url 'contacts:group-detail' object.pk %}{% else %}{% url 'contacts:group-list' %}{% endif %}"
+               class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

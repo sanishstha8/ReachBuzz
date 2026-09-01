@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Every CSV upload and what it did.</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-3">
+  <a href="{% url 'contacts:import' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-upload me-1" aria-hidden="true"></i>New import
+  </a>
+</div>
+
+<section class="card app-card" aria-labelledby="importsHeading">
+  <div class="card-header"><h2 id="importsHeading" class="h6 mb-0">Import history</h2></div>
+
+  {% if imports %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Past CSV imports</caption>
+        <thead>
+          <tr>
+            <th scope="col">File</th>
+            <th scope="col">When</th>
+            <th scope="col">By</th>
+            <th scope="col" class="text-end">Rows</th>
+            <th scope="col" class="text-end">Imported</th>
+            <th scope="col" class="text-end">Skipped</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in imports %}
+            <tr>
+              <th scope="row"><a href="{% url 'contacts:import-detail' item.pk %}">{{ item.file_name }}</a></th>
+              <td class="small text-body-secondary">{{ item.created_at|date:"j M Y, H:i" }}</td>
+              <td class="small">{{ item.uploaded_by.display_name|default:"—" }}</td>
+              <td class="text-end">{{ item.total_rows|intcomma }}</td>
+              <td class="text-end text-success">{{ item.imported_count|intcomma }}</td>
+              <td class="text-end text-body-secondary">
+                {{ item.duplicate_count|add:item.invalid_count|intcomma }}
+              </td>
+              <td>
+                <span class="badge {% if item.status == 'completed' %}text-bg-success{% elif item.status == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                  {{ item.get_status_display }}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-clock-history" aria-hidden="true"></i>
+        <h3 class="h6">No imports yet</h3>
+        <p class="text-body-secondary mb-0">Uploaded CSV files and their reports appear here.</p>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

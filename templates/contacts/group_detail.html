@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ member_count|intcomma }} member{{ member_count|pluralize }} &middot;
+    {{ eligible_count|intcomma }} can be messaged
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{% url 'contacts:group-list' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>All groups
+  </a>
+  {% if user.can_manage_contacts %}
+    <a href="{% url 'contacts:group-update' group.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
+    </a>
+    <a href="{% url 'contacts:group-delete' group.pk %}" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
+    </a>
+  {% endif %}
+</div>
+
+{% if group.description %}
+  <p class="text-body-secondary">{{ group.description|linebreaksbr }}</p>
+{% endif %}
+
+{% if member_count and not eligible_count %}
+  <div class="alert alert-warning" role="status">
+    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+    None of the contacts in this group have recorded consent, so a campaign targeting it
+    would have no recipients.
+  </div>
+{% endif %}
+
+<section class="card app-card" aria-labelledby="membersHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="membersHeading" class="h6 mb-0">Members</h2>
+    <span class="small text-body-secondary">{{ member_count|intcomma }} total</span>
+  </div>
+
+  {% if memberships %}
+    <form method="post" action="{% url 'contacts:group-members' group.pk %}"
+          onsubmit="return confirm('Remove the selected contacts from this group?');">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="remove">
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <caption class="visually-hidden">Contacts in this group</caption>
+          <thead>
+            <tr>
+              {% if user.can_manage_contacts %}<th scope="col" style="width:2.5rem;"><span class="visually-hidden">Select</span></th>{% endif %}
+              <th scope="col">Name</th>
+              <th scope="col">Phone number</th>
+              <th scope="col">Consent</th>
+              <th scope="col">Added</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for membership in memberships %}
+              <tr>
+                {% if user.can_manage_contacts %}
+                  <td>
+                    <input class="form-check-input" type="checkbox" name="contact_ids"
+                           value="{{ membership.contact.pk }}"
+                           aria-label="Select {{ membership.contact.name }}">
+                  </td>
+                {% endif %}
+                <th scope="row">
+                  <a href="{% url 'contacts:detail' membership.contact.pk %}">{{ membership.contact.name }}</a>
+                </th>
+                <td class="font-monospace small">{{ membership.contact.phone_number }}</td>
+                <td>
+                  {% if membership.contact.opted_in %}
+                    <span class="badge text-bg-success">Opted in</span>
+                  {% else %}
+                    <span class="badge text-bg-secondary">Not opted in</span>
+                  {% endif %}
+                </td>
+                <td class="small text-body-secondary">{{ membership.added_at|date:"j M Y" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if user.can_manage_contacts %}
+        <div class="card-footer d-flex gap-2">
+          <button type="submit" class="btn btn-sm btn-outline-danger">
+            Remove selected from group
+          </button>
+        </div>
+      {% endif %}
+    </form>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-person-plus" aria-hidden="true"></i>
+        <h3 class="h6">No members yet</h3>
+        <p class="text-body-secondary mb-0">
+          Add contacts to this group from a contact's edit page, or by importing a CSV
+          file with this group selected.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% if user.can_manage_contacts %}
+  <section class="card app-card mt-4" aria-labelledby="addHeading">
+    <div class="card-header"><h2 id="addHeading" class="h6 mb-0">Add contacts</h2></div>
+    <div class="card-body">
+      <p class="small text-body-secondary">
+        Bulk membership is easiest through
+        <a href="{% url 'contacts:import' %}">CSV import</a> with this group selected, or by
+        editing an individual contact.
+      </p>
+      <a href="{% url 'contacts:import' %}?group={{ group.pk }}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-upload me-1" aria-hidden="true"></i>Import into this group
+      </a>
+    </div>
+  </section>
+{% endif %}
+
+{% endblock %}

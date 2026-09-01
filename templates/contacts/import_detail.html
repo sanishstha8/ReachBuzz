@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    Uploaded {{ contact_import.created_at|date:"j M Y, H:i" }}
+    {% if contact_import.uploaded_by %} by {{ contact_import.uploaded_by.display_name }}{% endif %}
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{% url 'contacts:import' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>New import
+  </a>
+  <a href="{% url 'contacts:list' %}" class="btn btn-sm btn-outline-secondary">View contacts</a>
+  {% if contact_import.target_group %}
+    <a href="{% url 'contacts:group-detail' contact_import.target_group.pk %}" class="btn btn-sm btn-outline-secondary">
+      View {{ contact_import.target_group.name }}
+    </a>
+  {% endif %}
+</div>
+
+{% if contact_import.status == "failed" %}
+  <div class="alert alert-danger" role="alert">
+    <strong>Import failed.</strong> {{ contact_import.error_message }}
+  </div>
+{% endif %}
+
+<section class="card app-card mb-4" aria-labelledby="summaryHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="summaryHeading" class="h6 mb-0">Import summary</h2>
+    <span class="badge {% if contact_import.status == 'completed' %}text-bg-success{% elif contact_import.status == 'failed' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+      {{ contact_import.get_status_display }}
+    </span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3 text-center">
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="import-stat">
+          <div class="import-stat__value">{{ contact_import.total_rows|intcomma }}</div>
+          <div class="import-stat__label">Total rows</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="import-stat import-stat--success">
+          <div class="import-stat__value">{{ contact_import.imported_count|intcomma }}</div>
+          <div class="import-stat__label">Imported</div>
+        </div>
+      </div>
+      {% if contact_import.updated_count %}
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="import-stat import-stat--info">
+            <div class="import-stat__value">{{ contact_import.updated_count|intcomma }}</div>
+            <div class="import-stat__label">Updated</div>
+          </div>
+        </div>
+      {% endif %}
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="import-stat import-stat--warning">
+          <div class="import-stat__value">{{ contact_import.duplicate_count|intcomma }}</div>
+          <div class="import-stat__label">Duplicates</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="import-stat import-stat--danger">
+          <div class="import-stat__value">{{ contact_import.invalid_count|intcomma }}</div>
+          <div class="import-stat__label">Invalid</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4 col-xl-2">
+        <div class="import-stat">
+          <div class="import-stat__value">{{ contact_import.not_opted_in_count|intcomma }}</div>
+          <div class="import-stat__label">Not opted in</div>
+        </div>
+      </div>
+    </div>
+
+    {% if contact_import.not_opted_in_count %}
+      <div class="alert alert-warning mt-3 mb-0 small" role="status">
+        <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+        {{ contact_import.not_opted_in_count|intcomma }} contact{{ contact_import.not_opted_in_count|pluralize }}
+        had no explicit consent value and {{ contact_import.not_opted_in_count|pluralize:"was,were" }} imported
+        <strong>opted out</strong>. They are excluded from campaigns until consent is recorded.
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if invalid_rows %}
+  <section class="card app-card mb-4" aria-labelledby="invalidHeading">
+    <div class="card-header">
+      <h2 id="invalidHeading" class="h6 mb-0 text-danger">
+        Invalid rows ({{ invalid_rows|length|intcomma }})
+      </h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">Rows that could not be imported</caption>
+        <thead>
+          <tr><th scope="col" style="width:5rem;">Row</th><th scope="col">Problem</th><th scope="col">Data</th></tr>
+        </thead>
+        <tbody>
+          {% for row in invalid_rows %}
+            <tr>
+              <th scope="row">{{ row.row_number }}</th>
+              <td class="text-danger small">{{ row.error_message }}</td>
+              <td class="small font-monospace text-body-secondary text-break">
+                {% for key, value in row.raw_data.items %}{{ key }}={{ value }}{% if not forloop.last %} · {% endif %}{% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+{% if duplicate_rows %}
+  <section class="card app-card" aria-labelledby="duplicateHeading">
+    <div class="card-header">
+      <h2 id="duplicateHeading" class="h6 mb-0">Duplicate rows ({{ duplicate_rows|length|intcomma }})</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">Rows skipped because the number already exists</caption>
+        <thead>
+          <tr><th scope="col" style="width:5rem;">Row</th><th scope="col">Reason</th><th scope="col">Existing contact</th></tr>
+        </thead>
+        <tbody>
+          {% for row in duplicate_rows %}
+            <tr>
+              <th scope="row">{{ row.row_number }}</th>
+              <td class="small">{{ row.error_message }}</td>
+              <td class="small">
+                {% if row.contact %}
+                  <a href="{% url 'contacts:detail' row.contact.pk %}">{{ row.contact.name }}</a>
+                {% else %}
+                  <span class="text-body-secondary">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+{% if not invalid_rows and not duplicate_rows and contact_import.status == "completed" %}
+  <div class="alert alert-success" role="status">
+    <i class="bi bi-check-circle me-1" aria-hidden="true"></i>
+    Every row was processed without a problem.
+  </div>
+{% endif %}
+
+{% endblock %}

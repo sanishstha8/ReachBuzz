@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0 font-monospace">{{ contact.phone_number }}</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{% url 'contacts:list' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>All contacts
+  </a>
+  {% if user.can_manage_contacts %}
+    <a href="{% url 'contacts:update' contact.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
+    </a>
+    <a href="{% url 'contacts:delete' contact.pk %}" class="btn btn-sm btn-outline-danger">
+      <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
+    </a>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+
+  <div class="col-12 col-xl-7">
+    <section class="card app-card mb-4" aria-labelledby="detailsHeading">
+      <div class="card-header"><h2 id="detailsHeading" class="h6 mb-0">Details</h2></div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-sm-4 text-body-secondary">Name</dt>
+          <dd class="col-sm-8">{{ contact.name }}</dd>
+
+          <dt class="col-sm-4 text-body-secondary">Phone number</dt>
+          <dd class="col-sm-8 font-monospace">{{ contact.phone_number }}</dd>
+
+          <dt class="col-sm-4 text-body-secondary">Country code</dt>
+          <dd class="col-sm-8">+{{ contact.country_code|default:"—" }}</dd>
+
+          <dt class="col-sm-4 text-body-secondary">Email</dt>
+          <dd class="col-sm-8">{{ contact.email|default:"—" }}</dd>
+
+          <dt class="col-sm-4 text-body-secondary">Status</dt>
+          <dd class="col-sm-8"><span class="badge text-bg-light border">{{ contact.get_status_display }}</span></dd>
+
+          <dt class="col-sm-4 text-body-secondary">Added</dt>
+          <dd class="col-sm-8">{{ contact.created_at|date:"j M Y, H:i" }}</dd>
+
+          {% if contact.notes %}
+            <dt class="col-sm-4 text-body-secondary">Notes</dt>
+            <dd class="col-sm-8">{{ contact.notes|linebreaksbr }}</dd>
+          {% endif %}
+
+          {% if contact.last_error_message %}
+            <dt class="col-sm-4 text-body-secondary">Last delivery error</dt>
+            <dd class="col-sm-8 text-danger">
+              {{ contact.last_error_message }}
+              {% if contact.last_error_code %}<span class="text-body-secondary">({{ contact.last_error_code }})</span>{% endif %}
+            </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </section>
+
+    <section class="card app-card" aria-labelledby="historyHeading">
+      <div class="card-header"><h2 id="historyHeading" class="h6 mb-0">Message history</h2></div>
+      <div class="card-body">
+        {% if message_history %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr><th scope="col">Campaign</th><th scope="col">Status</th><th scope="col">Sent</th></tr>
+              </thead>
+              <tbody>
+                {% for message in message_history %}
+                  <tr>
+                    <td>{{ message.campaign.name }}</td>
+                    <td>{{ message.get_status_display }}</td>
+                    <td>{{ message.sent_at|date:"j M Y, H:i"|default:"—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="empty-state py-4">
+            <i class="bi bi-chat-dots" aria-hidden="true"></i>
+            <h3 class="h6">No messages yet</h3>
+            <p class="text-body-secondary mb-0">
+              Messages sent to this contact will be listed here once campaigns ship in Phase 4.
+            </p>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card mb-4" aria-labelledby="consentHeading">
+      <div class="card-header"><h2 id="consentHeading" class="h6 mb-0">Consent</h2></div>
+      <div class="card-body">
+        {% if contact.opted_in %}
+          <p class="mb-2">
+            <span class="badge text-bg-success">Opted in</span>
+            {% if contact.is_eligible %}
+              <span class="badge text-bg-success ms-1">Can be messaged</span>
+            {% else %}
+              <span class="badge text-bg-warning ms-1">Blocked by status</span>
+            {% endif %}
+          </p>
+          <dl class="row small">
+            <dt class="col-5 text-body-secondary">Source</dt>
+            <dd class="col-7">{{ contact.get_opt_in_source_display|default:"—" }}</dd>
+            <dt class="col-5 text-body-secondary">Recorded</dt>
+            <dd class="col-7">{{ contact.opt_in_at|date:"j M Y, H:i"|default:"—" }}</dd>
+          </dl>
+        {% else %}
+          <p class="mb-2"><span class="badge text-bg-secondary">Not opted in</span></p>
+          <p class="small text-body-secondary">
+            This contact will be excluded from every campaign until consent is recorded.
+          </p>
+          {% if contact.opt_out_at %}
+            <dl class="row small">
+              <dt class="col-5 text-body-secondary">Opted out</dt>
+              <dd class="col-7">{{ contact.opt_out_at|date:"j M Y, H:i" }}</dd>
+              <dt class="col-5 text-body-secondary">Source</dt>
+              <dd class="col-7">{{ contact.get_opt_out_source_display|default:"—" }}</dd>
+            </dl>
+          {% endif %}
+        {% endif %}
+
+        {% if user.can_manage_contacts %}
+          <hr>
+          {% if contact.opted_in %}
+            <form method="post" action="{% url 'contacts:consent' contact.pk 'opt-out' %}"
+                  onsubmit="return confirm('Opt {{ contact.name|escapejs }} out of all messaging?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Record opt-out
+              </button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'contacts:consent' contact.pk 'opt-in' %}"
+                  onsubmit="return confirm('Confirm that {{ contact.name|escapejs }} has genuinely consented to receive WhatsApp messages.');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-success btn-sm w-100">
+                <i class="bi bi-check-circle me-1" aria-hidden="true"></i>Record opt-in
+              </button>
+              <p class="form-text mb-0">Only do this when consent can be evidenced.</p>
+            </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card app-card" aria-labelledby="groupsHeading">
+      <div class="card-header"><h2 id="groupsHeading" class="h6 mb-0">Groups</h2></div>
+      <div class="card-body">
+        {% if memberships %}
+          <ul class="list-unstyled mb-0">
+            {% for membership in memberships %}
+              <li class="d-flex justify-content-between align-items-center py-1 small">
+                <a href="{% url 'contacts:group-detail' membership.group.pk %}">{{ membership.group.name }}</a>
+                <span class="text-body-secondary">{{ membership.added_at|date:"j M Y" }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="small text-body-secondary mb-0">Not a member of any group.</p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-6">
+    <section class="card app-card border-danger" aria-labelledby="deleteGroupHeading">
+      <div class="card-header">
+        <h2 id="deleteGroupHeading" class="h6 mb-0 text-danger">Delete group</h2>
+      </div>
+      <div class="card-body">
+        <p>Delete the group <strong>{{ object.name }}</strong>?</p>
+        <p class="small text-body-secondary">
+          The group and its membership records are removed. <strong>The contacts themselves are
+          kept</strong> — only their membership of this group goes away.
+        </p>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">Yes, delete group</button>
+            <a href="{% url 'contacts:group-detail' object.pk %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

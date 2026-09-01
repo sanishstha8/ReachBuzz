@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ totals.total|intcomma }} total &middot;
+    {{ totals.eligible|intcomma }} can be messaged
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap gap-2">
+    <span class="badge text-bg-light border py-2">Total <strong>{{ totals.total|intcomma }}</strong></span>
+    <span class="badge text-bg-light border py-2">Opted in <strong>{{ totals.opted_in|intcomma }}</strong></span>
+    <span class="badge text-bg-success py-2">Eligible <strong>{{ totals.eligible|intcomma }}</strong></span>
+  </div>
+  {% if user.can_manage_contacts %}
+    <div class="d-flex gap-2">
+      <a href="{% url 'contacts:import' %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-upload me-1" aria-hidden="true"></i>Import CSV
+      </a>
+      <a href="{% url 'contacts:create' %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add contact
+      </a>
+    </div>
+  {% endif %}
+</div>
+
+<section class="card app-card mb-3" aria-labelledby="filterHeading">
+  <div class="card-body py-3">
+    <h2 id="filterHeading" class="visually-hidden">Filter contacts</h2>
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-12 col-md-4">
+        <label class="form-label small" for="id_search">Search</label>
+        <input type="search" class="form-control" id="id_search" name="search"
+               value="{{ request.GET.search|default:'' }}" placeholder="Name, number or email">
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label small" for="id_group">Group</label>
+        <select class="form-select" id="id_group" name="group">
+          <option value="">All groups</option>
+          {% for group in groups %}
+            <option value="{{ group.pk }}" {% if request.GET.group == group.pk|stringformat:"s" %}selected{% endif %}>
+              {{ group.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label small" for="id_status">Status</label>
+        <select class="form-select" id="id_status" name="status">
+          <option value="">Any status</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <label class="form-label small" for="id_eligible">Messageable</label>
+        <select class="form-select" id="id_eligible" name="eligible">
+          <option value="">Everyone</option>
+          <option value="true" {% if request.GET.eligible == "true" %}selected{% endif %}>Can be messaged</option>
+          <option value="false" {% if request.GET.eligible == "false" %}selected{% endif %}>Cannot be messaged</option>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2 d-flex gap-2">
+        <button type="submit" class="btn btn-primary flex-fill">Filter</button>
+        <a href="{% url 'contacts:list' %}" class="btn btn-outline-secondary" title="Clear filters">
+          <i class="bi bi-x-lg" aria-hidden="true"></i><span class="visually-hidden">Clear filters</span>
+        </a>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="card app-card" aria-labelledby="contactsHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="contactsHeading" class="h6 mb-0">Contacts</h2>
+    <span class="small text-body-secondary">{{ page_obj.paginator.count|intcomma }} result{{ page_obj.paginator.count|pluralize }}</span>
+  </div>
+
+  {% if contacts %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">List of contacts with consent status and groups</caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Phone number</th>
+            <th scope="col">Consent</th>
+            <th scope="col">Status</th>
+            <th scope="col">Groups</th>
+            <th scope="col" class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+            <tr>
+              <th scope="row" class="fw-medium">
+                <a href="{% url 'contacts:detail' contact.pk %}">{{ contact.name }}</a>
+                {% if contact.email %}<div class="small text-body-secondary">{{ contact.email }}</div>{% endif %}
+              </th>
+              <td class="font-monospace small">{{ contact.phone_number }}</td>
+              <td>
+                {% if contact.opted_in %}
+                  <span class="badge text-bg-success">Opted in</span>
+                {% else %}
+                  <span class="badge text-bg-secondary">Not opted in</span>
+                {% endif %}
+              </td>
+              <td><span class="badge text-bg-light border">{{ contact.get_status_display }}</span></td>
+              <td class="small">
+                {% for membership in contact.group_memberships.all %}
+                  <span class="badge text-bg-light border">{{ membership.group.name }}</span>
+                {% empty %}
+                  <span class="text-body-secondary">&mdash;</span>
+                {% endfor %}
+              </td>
+              <td class="text-end">
+                <a href="{% url 'contacts:detail' contact.pk %}" class="btn btn-sm btn-outline-secondary"
+                   aria-label="View {{ contact.name }}">
+                  <i class="bi bi-eye" aria-hidden="true"></i>
+                </a>
+                {% if user.can_manage_contacts %}
+                  <a href="{% url 'contacts:update' contact.pk %}" class="btn btn-sm btn-outline-secondary"
+                     aria-label="Edit {{ contact.name }}">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-people" aria-hidden="true"></i>
+        {% if request.GET %}
+          <h3 class="h6">No contacts match these filters</h3>
+          <p class="text-body-secondary">Try a different search term, or
+            <a href="{% url 'contacts:list' %}">clear the filters</a>.</p>
+        {% else %}
+          <h3 class="h6">No contacts yet</h3>
+          <p class="text-body-secondary">
+            Add a contact manually, or import a CSV file to build your audience.
+          </p>
+          {% if user.can_manage_contacts %}
+            <div class="d-flex gap-2 justify-content-center mt-3">
+              <a href="{% url 'contacts:import' %}" class="btn btn-outline-primary btn-sm">Import CSV</a>
+              <a href="{% url 'contacts:create' %}" class="btn btn-primary btn-sm">Add contact</a>
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

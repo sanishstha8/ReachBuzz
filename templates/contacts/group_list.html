@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Lists of contacts you can target with a campaign.</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <form method="get" class="d-flex gap-2" role="search">
+    <label class="visually-hidden" for="id_group_search">Search groups</label>
+    <input type="search" class="form-control form-control-sm" id="id_group_search" name="search"
+           value="{{ search }}" placeholder="Search groups" style="min-width: 220px;">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+  </form>
+
+  {% if user.can_manage_contacts %}
+    <a href="{% url 'contacts:group-create' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Create group
+    </a>
+  {% endif %}
+</div>
+
+<section class="card app-card" aria-labelledby="groupsHeading">
+  <div class="card-header">
+    <h2 id="groupsHeading" class="h6 mb-0">Groups</h2>
+  </div>
+
+  {% if groups %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Contact groups with member counts</caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Description</th>
+            <th scope="col" class="text-end">Members</th>
+            <th scope="col" class="text-end">Can be messaged</th>
+            <th scope="col" class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in groups %}
+            <tr>
+              <th scope="row"><a href="{% url 'contacts:group-detail' group.pk %}">{{ group.name }}</a></th>
+              <td class="small text-body-secondary">{{ group.description|truncatechars:80|default:"—" }}</td>
+              <td class="text-end">{{ group.member_count|intcomma }}</td>
+              <td class="text-end">
+                <span class="badge {% if group.eligible_count %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                  {{ group.eligible_count|intcomma }}
+                </span>
+              </td>
+              <td class="text-end">
+                <a href="{% url 'contacts:group-detail' group.pk %}" class="btn btn-sm btn-outline-secondary"
+                   aria-label="View {{ group.name }}">
+                  <i class="bi bi-eye" aria-hidden="true"></i>
+                </a>
+                {% if user.can_manage_contacts %}
+                  <a href="{% url 'contacts:group-update' group.pk %}" class="btn btn-sm btn-outline-secondary"
+                     aria-label="Edit {{ group.name }}">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-collection" aria-hidden="true"></i>
+        <h3 class="h6">No groups yet</h3>
+        <p class="text-body-secondary">
+          Groups let you target a campaign at a specific set of contacts rather than everyone.
+        </p>
+        {% if user.can_manage_contacts %}
+          <a href="{% url 'contacts:group-create' %}" class="btn btn-primary btn-sm mt-2">Create group</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

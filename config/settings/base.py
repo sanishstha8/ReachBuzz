@@ -221,8 +221,11 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "ReBuzz API",
     "DESCRIPTION": (
-        "ReBuzz REST API. Manages opted-in contacts and sends campaigns through "
-        "the Meta WhatsApp Business Platform Cloud API."
+        "ReBuzz — Business Messaging & Automation Platform.\n\n"
+        "A WhatsApp Business messaging and campaign management platform for "
+        "businesses to send, manage, and track customer communications.\n\n"
+        "Messages are sent only to recipients whose consent is recorded, through "
+        "the official Meta WhatsApp Business Platform Cloud API."
     ),
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
@@ -322,7 +325,17 @@ CAMPAIGN_MAX_RECIPIENTS = env.int("CAMPAIGN_MAX_RECIPIENTS", default=5_000)
 # Branding shown in the UI (see core.context_processors)
 # ---------------------------------------------------------------------------
 
+# Short name for UI chrome (sidebar, page titles); full name and tagline for
+# documentation, the API schema and the page description.
 SITE_NAME = env("SITE_NAME", default="ReBuzz")
+SITE_TAGLINE = env("SITE_TAGLINE", default="Business Messaging & Automation Platform")
+SITE_DESCRIPTION = env(
+    "SITE_DESCRIPTION",
+    default=(
+        "A WhatsApp Business messaging and campaign management platform for "
+        "businesses to send, manage, and track customer communications."
+    ),
+)
 BUSINESS_DISPLAY_NAME = env("BUSINESS_DISPLAY_NAME", default="")
 SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="")
 

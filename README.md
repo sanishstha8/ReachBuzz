@@ -128,6 +128,18 @@ The app is named `messaging`, not `messages`, to avoid shadowing `django.contrib
 - **Secrets only in the environment.** No credential is hardcoded, logged, rendered in a
   template, or returned by the API.
 
+## 4a. Contributing and branch workflow
+
+Branch model, commit conventions, the pre-commit hooks, and the rules this
+project does not bend (consent, credentials, template approval, rate limiting)
+are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+---
+
 ## 5. Installation
 
 ```bash

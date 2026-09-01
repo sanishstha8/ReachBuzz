@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+{% include "campaigns/partials/wizard_steps.html" %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-7">
+    <section class="card app-card" aria-labelledby="audienceHeading">
+      <div class="card-header">
+        <h2 id="audienceHeading" class="h6 mb-0">Step 2 &middot; Who receives this</h2>
+      </div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="form-check form-switch mb-3 p-3 border rounded">
+            {{ form.target_all_eligible }}
+            <label class="form-check-label fw-medium" for="{{ form.target_all_eligible.id_for_label }}">
+              {{ form.target_all_eligible.label }}
+            </label>
+            <div class="form-text mb-0">
+              Ignores the group selection below and targets your whole opted-in list.
+            </div>
+          </div>
+
+          <fieldset>
+            <legend class="form-label">Or choose specific groups</legend>
+            {% if form.groups.field.queryset %}
+              <div class="list-group mb-3">
+                {% for choice in form.groups %}
+                  <label class="list-group-item d-flex align-items-center gap-3">
+                    {{ choice.tag }}
+                    <span class="flex-grow-1">{{ choice.choice_label }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="empty-state py-4">
+                <i class="bi bi-collection" aria-hidden="true"></i>
+                <h3 class="h6">No groups yet</h3>
+                <p class="text-body-secondary mb-2">
+                  Create a group to target part of your list, or send to everyone opted in.
+                </p>
+                <a href="{% url 'contacts:group-create' %}" class="btn btn-sm btn-outline-primary">
+                  Create a group
+                </a>
+              </div>
+            {% endif %}
+            {% if form.groups.errors %}
+              <div class="invalid-feedback d-block">{{ form.groups.errors }}</div>
+            {% endif %}
+          </fieldset>
+
+          <div class="d-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary">
+              Continue to message <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+            </button>
+            <a href="{% url 'campaigns:wizard-details' campaign.pk %}" class="btn btn-outline-secondary">Back</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card" aria-labelledby="breakdownHeading">
+      <div class="card-header">
+        <h2 id="breakdownHeading" class="h6 mb-0">Current selection</h2>
+      </div>
+      <div class="card-body">
+        <div class="d-flex align-items-baseline gap-2 mb-1">
+          <span class="display-6 fw-semibold">{{ breakdown.eligible|intcomma }}</span>
+          <span class="text-body-secondary">will receive this</span>
+        </div>
+        <p class="small text-body-secondary">
+          out of {{ breakdown.in_audience|intcomma }} contact{{ breakdown.in_audience|pluralize }} in the selected audience
+        </p>
+
+        {% if breakdown.excluded_total %}
+          <hr>
+          <h3 class="h6 small text-uppercase text-body-secondary">Excluded</h3>
+          <ul class="list-unstyled small mb-0">
+            {% if breakdown.excluded_not_opted_in %}
+              <li class="d-flex justify-content-between py-1">
+                <span>No recorded consent</span>
+                <strong>{{ breakdown.excluded_not_opted_in|intcomma }}</strong>
+              </li>
+            {% endif %}
+            {% if breakdown.excluded_inactive %}
+              <li class="d-flex justify-content-between py-1">
+                <span>Not an active contact</span>
+                <strong>{{ breakdown.excluded_inactive|intcomma }}</strong>
+              </li>
+            {% endif %}
+          </ul>
+          <p class="form-text mb-0">
+            Excluded contacts cannot be added to a campaign. Record consent on the contact
+            page if you have evidence of it.
+          </p>
+        {% endif %}
+
+        {% if breakdown.in_audience and not breakdown.eligible %}
+          <div class="alert alert-warning mt-3 mb-0 small" role="status">
+            Nobody in this audience has recorded consent, so this campaign would have no
+            recipients.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+
+    <div class="alert alert-warning" role="alert">
+      <i class="bi bi-cone-striped me-1" aria-hidden="true"></i>
+      <strong>Development template.</strong>
+      This is stored as a local template and is <em>not</em> submitted to Meta for approval.
+      It works with the mock provider only; the live WhatsApp Cloud API will refuse it.
+      For real sending, create and submit the template in WhatsApp Manager, then sync.
+    </div>
+
+    <section class="card app-card" aria-labelledby="templateFormHeading">
+      <div class="card-header"><h2 id="templateFormHeading" class="h6 mb-0">{{ page_title }}</h2></div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+
+          <div class="row g-3">
+            <div class="col-12 col-md-6">
+              <label class="form-label" for="{{ form.name.id_for_label }}">
+                Template name <span class="text-danger" aria-hidden="true">*</span>
+              </label>
+              {{ form.name }}
+              <div class="form-text">Lowercase with underscores, e.g. <code>order_ready</code>.</div>
+              {% if form.name.errors %}
+                <div class="invalid-feedback d-block">{{ form.name|field_errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="{{ form.language.id_for_label }}">Language</label>
+              {{ form.language }}
+            </div>
+
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="{{ form.category.id_for_label }}">Category</label>
+              {{ form.category }}
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{ form.header_text.id_for_label }}">Header (optional)</label>
+              {{ form.header_text }}
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{ form.body_text.id_for_label }}">
+                Body <span class="text-danger" aria-hidden="true">*</span>
+              </label>
+              {{ form.body_text }}
+              <div class="form-text">
+                Use <code>&#123;&#123;name&#125;&#125;</code> or <code>&#123;&#123;1&#125;&#125;</code> for variables.
+                Placeholders are detected automatically.
+              </div>
+              {% if form.body_text.errors %}
+                <div class="invalid-feedback d-block">{{ form.body_text|field_errors }}</div>
+              {% endif %}
+            </div>
+
+            <div class="col-12">
+              <label class="form-label" for="{{ form.footer_text.id_for_label }}">Footer (optional)</label>
+              {{ form.footer_text }}
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">Create local template</button>
+            <a href="{% url 'whatsapp:template-list' %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

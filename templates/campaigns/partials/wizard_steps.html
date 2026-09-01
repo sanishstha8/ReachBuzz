@@ -1,0 +1,28 @@
+{% comment %}
+Wizard progress indicator. Each step is a real URL, so an operator can jump
+back to an earlier step without losing the draft.
+{% endcomment %}
+
+<nav class="wizard mb-4" aria-label="Campaign steps">
+  <ol class="wizard__list">
+    {% for step in wizard_steps %}
+      <li class="wizard__step {% if step.is_current %}is-current{% elif step.is_done %}is-done{% endif %}"
+          {% if step.is_current %}aria-current="step"{% endif %}>
+        <span class="wizard__marker" aria-hidden="true">
+          {% if step.is_done %}<i class="bi bi-check-lg"></i>{% else %}{{ step.number }}{% endif %}
+        </span>
+        <span class="wizard__label">
+          {% if campaign and not step.is_current %}
+            {% if step.key == "details" %}<a href="{% url 'campaigns:wizard-details' campaign.pk %}">{{ step.label }}</a>
+            {% elif step.key == "audience" %}<a href="{% url 'campaigns:wizard-audience' campaign.pk %}">{{ step.label }}</a>
+            {% elif step.key == "message" %}<a href="{% url 'campaigns:wizard-message' campaign.pk %}">{{ step.label }}</a>
+            {% elif step.key == "preview" %}<a href="{% url 'campaigns:wizard-preview' campaign.pk %}">{{ step.label }}</a>
+            {% else %}{{ step.label }}{% endif %}
+          {% else %}
+            {{ step.label }}
+          {% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ol>
+</nav>

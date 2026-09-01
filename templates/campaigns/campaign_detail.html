@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {% include "campaigns/partials/status_badge.html" with status=campaign.status label=campaign.get_status_display %}
+    {% if campaign.started_at %}
+      &middot; started {{ campaign.started_at|date:"j M Y, H:i" }}
+    {% endif %}
+    {% if campaign.completed_at %}
+      &middot; finished {{ campaign.completed_at|date:"j M Y, H:i" }}
+    {% endif %}
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a href="{% url 'campaigns:list' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>All campaigns
+  </a>
+
+  {% if campaign.is_editable and user.can_manage_campaigns %}
+    <a href="{% url 'campaigns:wizard-details' campaign.pk %}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
+    </a>
+    <a href="{% url 'campaigns:wizard-preview' campaign.pk %}" class="btn btn-sm btn-primary">
+      <i class="bi bi-eye me-1" aria-hidden="true"></i>Review &amp; send
+    </a>
+  {% endif %}
+
+  {% if user.can_launch_campaigns %}
+    {% if campaign.can_pause %}
+      <form method="post" action="{% url 'campaigns:action' campaign.pk 'pause' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-warning">
+          <i class="bi bi-pause-fill me-1" aria-hidden="true"></i>Pause
+        </button>
+      </form>
+    {% endif %}
+    {% if campaign.can_resume %}
+      <form method="post" action="{% url 'campaigns:action' campaign.pk 'resume' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-play-fill me-1" aria-hidden="true"></i>Resume
+        </button>
+      </form>
+    {% endif %}
+    {% if campaign.can_cancel %}
+      <form method="post" action="{% url 'campaigns:action' campaign.pk 'cancel' %}" class="d-inline"
+            onsubmit="return confirm('Cancel this campaign? Messages not yet sent will be abandoned. Messages already handed to the provider cannot be recalled.');">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+          <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Cancel
+        </button>
+      </form>
+    {% endif %}
+  {% endif %}
+
+  {% if campaign.is_editable and user.can_manage_campaigns %}
+    <a href="{% url 'campaigns:delete' campaign.pk %}" class="btn btn-sm btn-outline-danger ms-auto">
+      <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
+    </a>
+  {% endif %}
+</div>
+
+{% if campaign.status == "processing" %}
+  <div class="alert alert-primary d-flex justify-content-between align-items-center" role="status"
+       id="liveBanner">
+    <span>
+      <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+      Sending in progress &mdash; this page refreshes automatically.
+    </span>
+    <span class="small" id="liveUpdated"></span>
+  </div>
+{% endif %}
+
+{% if campaign.failure_reason %}
+  <div class="alert alert-danger" role="alert">
+    <strong>Campaign failed.</strong> {{ campaign.failure_reason }}
+  </div>
+{% endif %}
+
+{% if message_total %}
+  <section class="card app-card mb-4" aria-labelledby="progressHeading">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 id="progressHeading" class="h6 mb-0">Progress</h2>
+      <span class="small text-body-secondary" data-stat="progress_percent">{{ stats.progress_percent }}</span>
+    </div>
+    <div class="card-body">
+      <div class="progress mb-3" role="progressbar"
+           aria-label="Campaign progress"
+           aria-valuenow="{{ stats.progress_percent }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar bg-success" id="progressBar" style="width: {{ stats.progress_percent }}%"></div>
+      </div>
+
+      <div class="row g-2 text-center">
+        {% include "campaigns/partials/stat_pill.html" with label="Recipients" value=stats.total key="total" tone="" %}
+        {% include "campaigns/partials/stat_pill.html" with label="Pending" value=stats.pending key="pending" tone="" %}
+        {% include "campaigns/partials/stat_pill.html" with label="Sent" value=stats.sent key="sent" tone="primary" %}
+        {% include "campaigns/partials/stat_pill.html" with label="Delivered" value=stats.delivered key="delivered" tone="success" %}
+        {% include "campaigns/partials/stat_pill.html" with label="Read" value=stats.read key="read" tone="success" %}
+        {% include "campaigns/partials/stat_pill.html" with label="Failed" value=stats.failed key="failed" tone="danger" %}
+      </div>
+    </div>
+  </section>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-7">
+    {% if campaign.is_editable %}
+      <section class="card app-card mb-4" aria-labelledby="readinessHeading">
+        <div class="card-header"><h2 id="readinessHeading" class="h6 mb-0">Readiness</h2></div>
+        <div class="card-body">
+          {% if preview.blockers %}
+            <p class="small text-body-secondary">Resolve these before sending:</p>
+            <ul class="mb-0 ps-3 small">
+              {% for blocker in preview.blockers %}<li class="text-danger">{{ blocker }}</li>{% endfor %}
+            </ul>
+          {% else %}
+            <p class="mb-0">
+              <i class="bi bi-check-circle-fill text-success me-1" aria-hidden="true"></i>
+              Ready to send to <strong>{{ preview.audience.eligible|intcomma }}</strong>
+              recipient{{ preview.audience.eligible|pluralize }}.
+            </p>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
+
+    {% if failed_messages %}
+      <section class="card app-card mb-4" aria-labelledby="failedHeading">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 id="failedHeading" class="h6 mb-0 text-danger">Failed messages</h2>
+          <a href="{% url 'campaigns:messages' campaign.pk %}?status=failed" class="small">View all</a>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <caption class="visually-hidden">Messages that failed to send</caption>
+            <thead>
+              <tr><th scope="col">Recipient</th><th scope="col">Number</th><th scope="col">Reason</th></tr>
+            </thead>
+            <tbody>
+              {% for message in failed_messages %}
+                <tr>
+                  <th scope="row" class="fw-normal">
+                    <a href="{% url 'contacts:detail' message.contact.pk %}">{{ message.contact.name }}</a>
+                  </th>
+                  <td class="font-monospace small">{{ message.to_phone_number }}</td>
+                  <td class="small text-danger">
+                    {{ message.error_message|default:"—" }}
+                    {% if message.error_code %}
+                      <span class="text-body-secondary">({{ message.error_code }})</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    {% if message_total %}
+      <section class="card app-card" aria-labelledby="recipientsHeading">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 id="recipientsHeading" class="h6 mb-0">Recipients</h2>
+          <a href="{% url 'campaigns:messages' campaign.pk %}" class="small">
+            View all {{ message_total|intcomma }}
+          </a>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <caption class="visually-hidden">Per-recipient message status</caption>
+            <thead>
+              <tr><th scope="col">Recipient</th><th scope="col">Number</th><th scope="col">Status</th></tr>
+            </thead>
+            <tbody>
+              {% for message in recent_messages %}
+                <tr>
+                  <th scope="row" class="fw-normal">{{ message.contact.name }}</th>
+                  <td class="font-monospace small">{{ message.to_phone_number }}</td>
+                  <td>
+                    {% include "messaging/partials/message_status_badge.html" with status=message.status label=message.get_status_display %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% else %}
+      <section class="card app-card">
+        <div class="card-body">
+          <div class="empty-state">
+            <i class="bi bi-people" aria-hidden="true"></i>
+            <h3 class="h6">No recipients yet</h3>
+            <p class="text-body-secondary mb-0">
+              Recipients are created when the campaign is launched. Until then this is a plan,
+              not a send.
+            </p>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card mb-4" aria-labelledby="summaryHeading">
+      <div class="card-header"><h2 id="summaryHeading" class="h6 mb-0">Campaign</h2></div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-body-secondary">Status</dt>
+          <dd class="col-7">
+            {% include "campaigns/partials/status_badge.html" with status=campaign.status label=campaign.get_status_display %}
+          </dd>
+
+          <dt class="col-5 text-body-secondary">Message type</dt>
+          <dd class="col-7">{{ campaign.get_message_type_display }}</dd>
+
+          {% if campaign.template %}
+            <dt class="col-5 text-body-secondary">Template</dt>
+            <dd class="col-7">
+              <a href="{% url 'whatsapp:template-detail' campaign.template.pk %}">{{ campaign.template.name }}</a>
+              {% if campaign.template.is_local %}<span class="badge text-bg-warning ms-1">local</span>{% endif %}
+            </dd>
+          {% endif %}
+
+          <dt class="col-5 text-body-secondary">Audience</dt>
+          <dd class="col-7">
+            {% if campaign.target_all_eligible %}
+              All opted-in contacts
+            {% else %}
+              {% for entry in campaign.audience_entries.all %}
+                <a href="{% url 'contacts:group-detail' entry.group.pk %}">{{ entry.group.name }}</a>{% if not forloop.last %}, {% endif %}
+              {% empty %}
+                <span class="text-body-secondary">Not set</span>
+              {% endfor %}
+            {% endif %}
+          </dd>
+
+          <dt class="col-5 text-body-secondary">Eligible now</dt>
+          <dd class="col-7">{{ audience.eligible|intcomma }}</dd>
+
+          <dt class="col-5 text-body-secondary">Created by</dt>
+          <dd class="col-7">{{ campaign.created_by.display_name|default:"—" }}</dd>
+
+          <dt class="col-5 text-body-secondary">Created</dt>
+          <dd class="col-7">{{ campaign.created_at|date:"j M Y, H:i" }}</dd>
+        </dl>
+      </div>
+    </section>
+
+    {% if campaign.description %}
+      <section class="card app-card" aria-labelledby="descriptionHeading">
+        <div class="card-header"><h2 id="descriptionHeading" class="h6 mb-0">Description</h2></div>
+        <div class="card-body small">{{ campaign.description|linebreaksbr }}</div>
+      </section>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{% if campaign.status == "processing" %}
+<script>
+  // Poll the stats endpoint while a campaign is sending, so the operator sees
+  // progress without reloading. Stops as soon as the campaign leaves
+  // "processing", and backs off if the endpoint starts failing.
+  (function () {
+    const url = "{% url 'campaigns-api:campaign-stats' campaign.pk %}";
+    const keys = ['total', 'pending', 'sent', 'delivered', 'read', 'failed'];
+    let failures = 0;
+
+    async function refresh() {
+      try {
+        const stats = await window.api.get(url);
+        failures = 0;
+
+        keys.forEach(function (key) {
+          const el = document.querySelector('[data-stat="' + key + '"]');
+          if (el) { el.textContent = stats[key].toLocaleString(); }
+        });
+
+        const bar = document.getElementById('progressBar');
+        if (bar) { bar.style.width = stats.progress_percent + '%'; }
+
+        const stamp = document.getElementById('liveUpdated');
+        if (stamp) { stamp.textContent = 'updated ' + new Date().toLocaleTimeString(); }
+
+        if (stats.status !== 'processing') {
+          window.location.reload();
+          return;
+        }
+      } catch (error) {
+        failures += 1;
+        if (failures >= 3) {
+          window.toast('Live updates stopped. Reload the page to see current progress.', 'warning');
+          return;
+        }
+      }
+      window.setTimeout(refresh, 5000);
+    }
+
+    window.setTimeout(refresh, 5000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

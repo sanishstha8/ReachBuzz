@@ -1,0 +1,10 @@
+{% load humanize %}{% comment %}
+Small stat used on the campaign monitoring page. `key` becomes a data-stat
+attribute so the polling script can update the value in place.
+{% endcomment %}
+<div class="col-6 col-md-4 col-xl-2">
+  <div class="stat-pill {% if tone %}stat-pill--{{ tone }}{% endif %}">
+    <div class="stat-pill__value" data-stat="{{ key }}">{{ value|intcomma }}</div>
+    <div class="stat-pill__label">{{ label }}</div>
+  </div>
+</div>

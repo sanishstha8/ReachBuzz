@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ totals.total_count|intcomma }} campaign{{ totals.total_count|pluralize }} &middot;
+    {{ totals.draft_count|intcomma }} draft &middot;
+    {{ totals.completed_count|intcomma }} completed
+  </p>
+{% endblock %}
+
+{% block content %}
+
+{% if not sending_available %}
+  <div class="alert alert-warning d-flex gap-3 align-items-start" role="status">
+    <i class="bi bi-exclamation-triangle fs-5" aria-hidden="true"></i>
+    <div>
+      <strong>Sending is unavailable.</strong>
+      {{ sending_blocked_reason|default:"The sending pipeline is not ready." }}
+      Campaigns can still be built, validated and previewed; launching stays disabled so
+      nothing gets stranded mid-send.
+    </div>
+  </div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <form method="get" class="d-flex gap-2 flex-wrap" role="search">
+    <label class="visually-hidden" for="id_campaign_search">Search campaigns</label>
+    <input type="search" class="form-control form-control-sm" id="id_campaign_search" name="search"
+           value="{{ request.GET.search|default:'' }}" placeholder="Search campaigns" style="min-width: 220px;">
+
+    <label class="visually-hidden" for="id_campaign_status">Status</label>
+    <select class="form-select form-select-sm" id="id_campaign_status" name="status" style="min-width: 150px;">
+      <option value="">Any status</option>
+      {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if request.GET.status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+    {% if request.GET %}
+      <a href="{% url 'campaigns:list' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if user.can_manage_campaigns %}
+    <a href="{% url 'campaigns:create' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>New campaign
+    </a>
+  {% endif %}
+</div>
+
+<section class="card app-card" aria-labelledby="campaignsHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="campaignsHeading" class="h6 mb-0">Campaigns</h2>
+    <span class="small text-body-secondary">{{ page_obj.paginator.count|intcomma }} result{{ page_obj.paginator.count|pluralize }}</span>
+  </div>
+
+  {% if campaigns %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Campaigns with recipient counts and status</caption>
+        <thead>
+          <tr>
+            <th scope="col">Campaign</th>
+            <th scope="col">Message</th>
+            <th scope="col" class="text-end">Recipients</th>
+            <th scope="col" class="text-end">Failed</th>
+            <th scope="col">Status</th>
+            <th scope="col">Created</th>
+            <th scope="col" class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for campaign in campaigns %}
+            <tr>
+              <th scope="row">
+                <a href="{% url 'campaigns:detail' campaign.pk %}">{{ campaign.name }}</a>
+                {% if campaign.description %}
+                  <div class="small text-body-secondary">{{ campaign.description|truncatechars:60 }}</div>
+                {% endif %}
+              </th>
+              <td class="small">
+                {% if campaign.template %}
+                  <span class="badge text-bg-light border">{{ campaign.template.name }}</span>
+                {% else %}
+                  <span class="text-body-secondary">Free-form text</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if campaign.total_recipients %}
+                  {{ campaign.total_recipients|intcomma }}
+                {% else %}
+                  <span class="text-body-secondary">&mdash;</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if campaign.failed_count %}
+                  <span class="text-danger">{{ campaign.failed_count|intcomma }}</span>
+                {% else %}
+                  <span class="text-body-secondary">&mdash;</span>
+                {% endif %}
+              </td>
+              <td>{% include "campaigns/partials/status_badge.html" with status=campaign.status label=campaign.get_status_display %}</td>
+              <td class="small text-body-secondary">{{ campaign.created_at|date:"j M Y" }}</td>
+              <td class="text-end">
+                <a href="{% url 'campaigns:detail' campaign.pk %}" class="btn btn-sm btn-outline-secondary"
+                   aria-label="View {{ campaign.name }}">
+                  <i class="bi bi-eye" aria-hidden="true"></i>
+                </a>
+                {% if campaign.is_editable and user.can_manage_campaigns %}
+                  <a href="{% url 'campaigns:wizard-details' campaign.pk %}" class="btn btn-sm btn-outline-secondary"
+                     aria-label="Edit {{ campaign.name }}">
+                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-megaphone" aria-hidden="true"></i>
+        {% if request.GET %}
+          <h3 class="h6">No campaigns match these filters</h3>
+          <p class="text-body-secondary"><a href="{% url 'campaigns:list' %}">Clear the filters</a> to see everything.</p>
+        {% else %}
+          <h3 class="h6">No campaigns yet</h3>
+          <p class="text-body-secondary">
+            A campaign pairs an audience with an approved template. You will see recipient
+            counts and a full preview before anything is sent.
+          </p>
+          {% if user.can_manage_campaigns %}
+            <a href="{% url 'campaigns:create' %}" class="btn btn-primary btn-sm mt-2">Create your first campaign</a>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-6">
+    <section class="card app-card border-danger" aria-labelledby="deleteHeading">
+      <div class="card-header"><h2 id="deleteHeading" class="h6 mb-0 text-danger">Delete campaign</h2></div>
+      <div class="card-body">
+        <p>Delete the campaign <strong>{{ object.name }}</strong>?</p>
+        <p class="small text-body-secondary">
+          This removes the campaign and its message records. The audit trail keeps a
+          permanent record that the campaign existed, who created it and who launched it.
+          Contacts and groups are not affected.
+        </p>
+
+        <form method="post">
+          {% csrf_token %}
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger">Yes, delete campaign</button>
+            <a href="{% url 'campaigns:detail' object.pk %}" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}

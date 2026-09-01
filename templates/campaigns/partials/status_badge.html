@@ -1,0 +1,8 @@
+{% comment %}Campaign status badge. Usage: {% include ... with status=c.status label=c.get_status_display %}{% endcomment %}
+{% if status == "completed" %}<span class="badge text-bg-success">{{ label }}</span>
+{% elif status == "processing" %}<span class="badge text-bg-primary">{{ label }}</span>
+{% elif status == "paused" %}<span class="badge text-bg-warning">{{ label }}</span>
+{% elif status == "failed" %}<span class="badge text-bg-danger">{{ label }}</span>
+{% elif status == "cancelled" %}<span class="badge text-bg-secondary">{{ label }}</span>
+{% elif status == "scheduled" %}<span class="badge text-bg-info">{{ label }}</span>
+{% else %}<span class="badge text-bg-light border">{{ label }}</span>{% endif %}

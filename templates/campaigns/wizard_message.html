@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block content %}
+{% include "campaigns/partials/wizard_steps.html" %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-7">
+    <section class="card app-card" aria-labelledby="messageHeading">
+      <div class="card-header">
+        <h2 id="messageHeading" class="h6 mb-0">Step 3 &middot; What the message says</h2>
+      </div>
+      <div class="card-body">
+        {% if form.non_field_errors %}
+          <div class="alert alert-danger" role="alert">
+            {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+
+        <form method="post" novalidate id="messageForm">
+          {% csrf_token %}
+
+          <fieldset class="mb-4">
+            <legend class="form-label">Message type</legend>
+            {% for choice in form.message_type %}
+              <div class="form-check">
+                {{ choice.tag }}
+                <label class="form-check-label" for="{{ choice.id_for_label }}">
+                  {{ choice.choice_label }}
+                </label>
+              </div>
+            {% endfor %}
+            <div class="form-text">
+              WhatsApp requires an approved template for business-initiated messages.
+              Free-form text is only delivered inside the 24-hour customer-service window,
+              which opens when a recipient messages you first.
+            </div>
+          </fieldset>
+
+          <div class="mb-3" data-message-section="template">
+            <label class="form-label" for="{{ form.template.id_for_label }}">Template</label>
+            {{ form.template }}
+            {% if form.template.errors %}
+              <div class="invalid-feedback d-block">{{ form.template|field_errors }}</div>
+            {% endif %}
+            <div class="form-text">
+              Only templates usable with the current provider are listed.
+              <a href="{% url 'whatsapp:template-list' %}">Manage templates</a>
+            </div>
+            <button type="submit" name="reload_template" value="1"
+                    class="btn btn-sm btn-outline-secondary mt-2">
+              <i class="bi bi-arrow-clockwise me-1" aria-hidden="true"></i>Load variables
+            </button>
+          </div>
+
+          {% if form.variable_fields %}
+            <fieldset class="mb-3">
+              <legend class="form-label">Variables</legend>
+              <p class="form-text mt-0">
+                Each placeholder gets its value from a contact field, or from fixed text used
+                for every recipient.
+              </p>
+
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <caption class="visually-hidden">Template variable mapping</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Placeholder</th>
+                      <th scope="col">Contact field</th>
+                      <th scope="col">or fixed text</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for token, source_field, value_field in form.variable_rows %}
+                      <tr>
+                        <th scope="row"><code>&#123;&#123;{{ token }}&#125;&#125;</code></th>
+                        <td>
+                          {{ source_field }}
+                          {% if source_field.errors %}
+                            <div class="invalid-feedback d-block">{{ source_field|field_errors }}</div>
+                          {% endif %}
+                        </td>
+                        <td>
+                          {{ value_field }}
+                          {% if value_field.errors %}
+                            <div class="invalid-feedback d-block">{{ value_field|field_errors }}</div>
+                          {% endif %}
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </fieldset>
+          {% endif %}
+
+          <div class="mb-3" data-message-section="text">
+            <label class="form-label" for="{{ form.body_text.id_for_label }}">
+              {{ form.body_text.label }}
+            </label>
+            {{ form.body_text }}
+            <div class="form-text">{{ form.body_text.help_text }}</div>
+            {% if form.body_text.errors %}
+              <div class="invalid-feedback d-block">{{ form.body_text|field_errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              Continue to preview <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+            </button>
+            <a href="{% url 'campaigns:wizard-audience' campaign.pk %}" class="btn btn-outline-secondary">Back</a>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    {% if selected_template %}
+      <section class="card app-card" aria-labelledby="templateHeading">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 id="templateHeading" class="h6 mb-0">{{ selected_template.name }}</h2>
+          {% if selected_template.is_local %}
+            <span class="badge text-bg-warning">local</span>
+          {% else %}
+            <span class="badge text-bg-success">{{ selected_template.get_status_display }}</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="chat-bubble">{{ selected_template.full_text|linebreaksbr }}</div>
+          <dl class="row small mt-3 mb-0">
+            <dt class="col-5 text-body-secondary">Language</dt>
+            <dd class="col-7">{{ selected_template.language }}</dd>
+            <dt class="col-5 text-body-secondary">Category</dt>
+            <dd class="col-7">{{ selected_template.get_category_display }}</dd>
+            <dt class="col-5 text-body-secondary">Variables</dt>
+            <dd class="col-7">{{ selected_template.variable_count }}</dd>
+          </dl>
+        </div>
+      </section>
+    {% else %}
+      <section class="card app-card">
+        <div class="card-body">
+          <div class="empty-state py-4">
+            <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+            <h3 class="h6">No template selected</h3>
+            <p class="text-body-secondary mb-0">
+              Pick a template and press <strong>Load variables</strong> to map its placeholders.
+            </p>
+          </div>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Show only the fields relevant to the chosen message type.
+  (function () {
+    const form = document.getElementById('messageForm');
+    if (!form) { return; }
+
+    function sync() {
+      const checked = form.querySelector('input[name="message_type"]:checked');
+      const isTemplate = !checked || checked.value === 'template';
+      form.querySelectorAll('[data-message-section="template"]').forEach(function (el) {
+        el.hidden = !isTemplate;
+      });
+      form.querySelectorAll('[data-message-section="text"]').forEach(function (el) {
+        el.hidden = isTemplate;
+      });
+    }
+
+    form.querySelectorAll('input[name="message_type"]').forEach(function (input) {
+      input.addEventListener('change', sync);
+    });
+    sync();
+
+    // Reload the variable fields as soon as a different template is chosen.
+    // The hidden flag tells the view to re-render this step rather than
+    // treating the submission as "continue".
+    const templateSelect = document.getElementById('id_template');
+    if (templateSelect) {
+      templateSelect.addEventListener('change', function () {
+        const flag = document.createElement('input');
+        flag.type = 'hidden';
+        flag.name = 'reload_template';
+        flag.value = '1';
+        form.appendChild(flag);
+        form.submit();
+      });
+    }
+  })();
+</script>
+{% endblock %}

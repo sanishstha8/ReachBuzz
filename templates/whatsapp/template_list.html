@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ usable_count|intcomma }} usable with the <strong>{{ provider }}</strong> provider
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-light border d-flex gap-3 align-items-start" role="note">
+  <i class="bi bi-info-circle fs-5 text-body-secondary" aria-hidden="true"></i>
+  <div class="small">
+    <strong>Templates are created and approved by Meta, not here.</strong>
+    WhatsApp requires an approved template for any message your business starts. This page
+    mirrors that registry — it cannot submit a template for review or mark one approved.
+    {% if is_mock %}
+      While the mock provider is active you can add <em>local</em> templates for development;
+      they are refused as soon as the live provider is selected.
+    {% endif %}
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <form method="get" class="d-flex gap-2" role="search">
+    <label class="visually-hidden" for="id_template_search">Search templates</label>
+    <input type="search" class="form-control form-control-sm" id="id_template_search" name="search"
+           value="{{ search }}" placeholder="Search templates" style="min-width: 220px;">
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+  </form>
+
+  {% if is_mock and user.is_administrator %}
+    <a href="{% url 'whatsapp:template-create' %}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>New local template
+    </a>
+  {% endif %}
+</div>
+
+<section class="card app-card" aria-labelledby="templatesHeading">
+  <div class="card-header"><h2 id="templatesHeading" class="h6 mb-0">Templates</h2></div>
+
+  {% if templates %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Message templates and their approval status</caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Language</th>
+            <th scope="col">Category</th>
+            <th scope="col">Origin</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-end">Variables</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for template in templates %}
+            <tr>
+              <th scope="row">
+                <a href="{% url 'whatsapp:template-detail' template.pk %}">{{ template.name }}</a>
+                <div class="small text-body-secondary">{{ template.body_text|truncatechars:70 }}</div>
+              </th>
+              <td class="small">{{ template.language }}</td>
+              <td class="small">{{ template.get_category_display }}</td>
+              <td>
+                {% if template.is_local %}
+                  <span class="badge text-bg-warning">Local</span>
+                {% else %}
+                  <span class="badge text-bg-light border">Meta</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if template.status == "approved" %}
+                  <span class="badge text-bg-success">{{ template.get_status_display }}</span>
+                {% elif template.status == "rejected" %}
+                  <span class="badge text-bg-danger">{{ template.get_status_display }}</span>
+                {% elif template.status == "pending" %}
+                  <span class="badge text-bg-info">{{ template.get_status_display }}</span>
+                {% else %}
+                  <span class="badge text-bg-light border">{{ template.get_status_display }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ template.variable_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+        <h3 class="h6">No templates yet</h3>
+        <p class="text-body-secondary">
+          {% if is_mock %}
+            Create a local template to build and simulate campaigns. Once your Meta
+            credentials are configured, your approved templates are synced here instead.
+          {% else %}
+            Submit templates in WhatsApp Manager, then sync them here once Meta approves them.
+          {% endif %}
+        </p>
+        {% if is_mock and user.is_administrator %}
+          <a href="{% url 'whatsapp:template-create' %}" class="btn btn-primary btn-sm mt-2">
+            Create a local template
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load humanize ui %}
+
+{% block content %}
+{% include "campaigns/partials/wizard_steps.html" %}
+
+<section aria-labelledby="confirmHeading">
+  <h2 id="confirmHeading" class="h6 text-body-secondary text-uppercase small mb-3">
+    Step 5 &middot; Confirm and send
+  </h2>
+
+  {% include "campaigns/partials/preview_panel.html" %}
+</section>
+
+<section class="card app-card mt-4 border-primary" aria-labelledby="sendHeading">
+  <div class="card-header"><h2 id="sendHeading" class="h6 mb-0">Send this campaign</h2></div>
+  <div class="card-body">
+    <p class="mb-3">
+      This will send <strong>{{ preview.audience.eligible|intcomma }}</strong> WhatsApp
+      message{{ preview.audience.eligible|pluralize }} through
+      <strong>{{ whatsapp_provider }}</strong>.
+      {% if is_mock_provider %}
+        Because the mock provider is active, the messages are simulated and nothing reaches
+        a real phone.
+      {% else %}
+        Messages cannot be recalled once the provider accepts them.
+      {% endif %}
+    </p>
+
+    {% if preview.is_ready and sending_available %}
+      <form method="post" novalidate id="launchForm">
+        {% csrf_token %}
+
+        <div class="form-check mb-3">
+          {{ form.confirm }}
+          <label class="form-check-label" for="{{ form.confirm.id_for_label }}">
+            {{ form.confirm.label }}
+          </label>
+          {% if form.confirm.errors %}
+            <div class="invalid-feedback d-block">{{ form.confirm|field_errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-lg" id="launchButton">
+            <span class="btn-label">
+              <i class="bi bi-send me-1" aria-hidden="true"></i>
+              Send to {{ preview.audience.eligible|intcomma }} recipient{{ preview.audience.eligible|pluralize }}
+            </span>
+            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+          </button>
+          <a href="{% url 'campaigns:wizard-preview' campaign.pk %}" class="btn btn-outline-secondary">Back</a>
+        </div>
+      </form>
+    {% else %}
+      <a href="{% url 'campaigns:wizard-preview' campaign.pk %}" class="btn btn-outline-secondary">
+        Back to preview
+      </a>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Sending is irreversible, so require an explicit confirmation dialog and
+  // block a double submission from creating two launches.
+  (function () {
+    const form = document.getElementById('launchForm');
+    if (!form) { return; }
+
+    form.addEventListener('submit', function (event) {
+      const count = {{ preview.audience.eligible }};
+      if (!window.confirm('Send this campaign to ' + count + ' recipient(s)? This cannot be undone.')) {
+        event.preventDefault();
+        return;
+      }
+      const button = document.getElementById('launchButton');
+      button.disabled = true;
+      button.querySelector('.spinner-border').classList.remove('d-none');
+      button.querySelector('.btn-label').textContent = 'Sending…';
+    });
+  })();
+</script>
+{% endblock %}

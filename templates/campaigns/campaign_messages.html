@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ stats.total|intcomma }} recipient{{ stats.total|pluralize }} &middot;
+    {{ stats.failed|intcomma }} failed
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+  <a href="{% url 'campaigns:detail' campaign.pk %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>Back to campaign
+  </a>
+
+  <form method="get" class="d-flex gap-2">
+    <label class="visually-hidden" for="id_message_status">Status</label>
+    <select class="form-select form-select-sm" id="id_message_status" name="status" style="min-width: 160px;">
+      <option value="">All statuses</option>
+      {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+  </form>
+</div>
+
+<section class="card app-card" aria-labelledby="recipientsHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="recipientsHeading" class="h6 mb-0">Recipients</h2>
+    <span class="small text-body-secondary">{{ page_obj.paginator.count|intcomma }} shown</span>
+  </div>
+
+  {% if messages_list %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Per-recipient message status for this campaign</caption>
+        <thead>
+          <tr>
+            <th scope="col">Recipient</th>
+            <th scope="col">Number</th>
+            <th scope="col">Status</th>
+            <th scope="col">Sent</th>
+            <th scope="col">Delivered</th>
+            <th scope="col">Read</th>
+            <th scope="col">Problem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for message in messages_list %}
+            <tr>
+              <th scope="row" class="fw-normal">
+                <a href="{% url 'contacts:detail' message.contact.pk %}">{{ message.contact.name }}</a>
+              </th>
+              <td class="font-monospace small">{{ message.to_phone_number }}</td>
+              <td>
+                {% include "messaging/partials/message_status_badge.html" with status=message.status label=message.get_status_display %}
+              </td>
+              <td class="small text-body-secondary">{{ message.sent_at|date:"j M H:i"|default:"—" }}</td>
+              <td class="small text-body-secondary">{{ message.delivered_at|date:"j M H:i"|default:"—" }}</td>
+              <td class="small text-body-secondary">{{ message.read_at|date:"j M H:i"|default:"—" }}</td>
+              <td class="small">
+                {% if message.error_message %}
+                  <span class="text-danger">{{ message.error_message }}</span>
+                  {% if message.error_code %}
+                    <span class="text-body-secondary">({{ message.error_code }})</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-body-secondary">&mdash;</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include "partials/pagination.html" %}
+
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-inbox" aria-hidden="true"></i>
+        <h3 class="h6">
+          {% if current_status %}No messages with this status{% else %}No recipients yet{% endif %}
+        </h3>
+        <p class="text-body-secondary mb-0">
+          {% if current_status %}
+            <a href="{% url 'campaigns:messages' campaign.pk %}">Clear the filter</a> to see everything.
+          {% else %}
+            Recipients are created when the campaign is launched.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}

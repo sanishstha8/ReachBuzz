@@ -1,0 +1,10 @@
+{% comment %}
+Message status badge.
+Usage: {% include "messaging/partials/message_status_badge.html" with status=m.status label=m.get_status_display %}
+{% endcomment %}
+{% if status == "read" %}<span class="badge text-bg-success">{{ label }}</span>
+{% elif status == "delivered" %}<span class="badge text-bg-success">{{ label }}</span>
+{% elif status == "sent" %}<span class="badge text-bg-primary">{{ label }}</span>
+{% elif status == "failed" %}<span class="badge text-bg-danger">{{ label }}</span>
+{% elif status == "sending" %}<span class="badge text-bg-info">{{ label }}</span>
+{% else %}<span class="badge text-bg-light border">{{ label }}</span>{% endif %}

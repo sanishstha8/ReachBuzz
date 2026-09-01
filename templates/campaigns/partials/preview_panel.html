@@ -1,0 +1,107 @@
+{% load humanize %}{% comment %}
+Shared by the preview and confirm steps: recipient counts, the rendered
+message, and anything blocking the send.
+{% endcomment %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-6">
+    <section class="card app-card h-100" aria-labelledby="recipientsHeading">
+      <div class="card-header"><h2 id="recipientsHeading" class="h6 mb-0">Recipients</h2></div>
+      <div class="card-body">
+        <div class="d-flex align-items-baseline gap-2 mb-1">
+          <span class="display-5 fw-semibold">{{ preview.audience.eligible|intcomma }}</span>
+          <span class="text-body-secondary">
+            recipient{{ preview.audience.eligible|pluralize }} will be messaged
+          </span>
+        </div>
+
+        <p class="small text-body-secondary">
+          {% if preview.audience.targets_all %}
+            Targeting every opted-in, active contact.
+          {% else %}
+            From {{ preview.audience.groups|length }} group{{ preview.audience.groups|length|pluralize }}:
+            {% for name in preview.audience.groups %}<span class="badge text-bg-light border">{{ name }}</span>{% endfor %}
+          {% endif %}
+        </p>
+
+        <table class="table table-sm mb-0">
+          <caption class="visually-hidden">Audience breakdown</caption>
+          <tbody>
+            <tr>
+              <th scope="row" class="fw-normal">In selected audience</th>
+              <td class="text-end">{{ preview.audience.in_audience|intcomma }}</td>
+            </tr>
+            <tr class="table-success">
+              <th scope="row" class="fw-normal">Consent on record &amp; active</th>
+              <td class="text-end fw-semibold">{{ preview.audience.eligible|intcomma }}</td>
+            </tr>
+            {% if preview.audience.excluded_not_opted_in %}
+              <tr>
+                <th scope="row" class="fw-normal text-body-secondary">Excluded &mdash; no consent</th>
+                <td class="text-end text-body-secondary">{{ preview.audience.excluded_not_opted_in|intcomma }}</td>
+              </tr>
+            {% endif %}
+            {% if preview.audience.excluded_inactive %}
+              <tr>
+                <th scope="row" class="fw-normal text-body-secondary">Excluded &mdash; not active</th>
+                <td class="text-end text-body-secondary">{{ preview.audience.excluded_inactive|intcomma }}</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-6">
+    <section class="card app-card h-100" aria-labelledby="messagePreviewHeading">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 id="messagePreviewHeading" class="h6 mb-0">Message preview</h2>
+        {% if campaign.template %}
+          <span class="badge text-bg-light border">{{ campaign.template.name }}</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if preview.sample_recipient %}
+          <p class="small text-body-secondary mb-2">
+            As {{ preview.sample_recipient.name }} will see it:
+          </p>
+        {% else %}
+          <p class="small text-body-secondary mb-2">Example rendering:</p>
+        {% endif %}
+
+        <div class="chat-bubble">{{ preview.sample_text|linebreaksbr|default:"—" }}</div>
+
+        {% if preview.missing_variables %}
+          <div class="alert alert-warning mt-3 mb-0 small" role="alert">
+            <strong>Unresolved variables:</strong>
+            {% for token in preview.missing_variables %}<code>&#123;&#123;{{ token }}&#125;&#125;</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+            These would be sent literally.
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+{% if preview.blockers %}
+  <div class="alert alert-danger mt-4" role="alert">
+    <h3 class="h6 alert-heading">
+      <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+      This campaign cannot be sent yet
+    </h3>
+    <ul class="mb-0 ps-3">
+      {% for blocker in preview.blockers %}<li>{{ blocker }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if not sending_available %}
+  <div class="alert alert-warning mt-4" role="status">
+    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+    <strong>Sending is unavailable.</strong>
+    {{ sending_blocked_reason|default:"The sending pipeline is not ready." }}
+    The campaign plan itself is complete and validated — launching is disabled rather than
+    leaving a campaign stuck mid-send with nothing able to deliver it.
+  </div>
+{% endif %}

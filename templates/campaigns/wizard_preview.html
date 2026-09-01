@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% include "campaigns/partials/wizard_steps.html" %}
+
+<section aria-labelledby="previewHeading">
+  <h2 id="previewHeading" class="h6 text-body-secondary text-uppercase small mb-3">
+    Step 4 &middot; Check before sending
+  </h2>
+
+  {% include "campaigns/partials/preview_panel.html" %}
+</section>
+
+<div class="d-flex flex-wrap gap-2 mt-4">
+  {% if preview.is_ready and sending_available and user.can_launch_campaigns %}
+    <a href="{% url 'campaigns:wizard-confirm' campaign.pk %}" class="btn btn-primary">
+      Continue to confirmation <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+    </a>
+  {% else %}
+    <button type="button" class="btn btn-primary" disabled
+            title="{% if not user.can_launch_campaigns %}You do not have permission to send campaigns.{% elif not sending_available %}Sending is unavailable.{% else %}Resolve the problems listed above first.{% endif %}">
+      Continue to confirmation
+    </button>
+  {% endif %}
+  <a href="{% url 'campaigns:wizard-message' campaign.pk %}" class="btn btn-outline-secondary">Back</a>
+  <a href="{% url 'campaigns:detail' campaign.pk %}" class="btn btn-outline-secondary ms-auto">
+    Save and exit
+  </a>
+</div>
+{% endblock %}

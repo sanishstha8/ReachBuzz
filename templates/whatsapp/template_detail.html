@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">{{ template.language }} &middot; {{ template.get_category_display }}</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-3">
+  <a href="{% url 'whatsapp:template-list' %}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>All templates
+  </a>
+</div>
+
+{% if not usability.usable %}
+  <div class="alert alert-warning" role="alert">
+    <i class="bi bi-exclamation-triangle me-1" aria-hidden="true"></i>
+    <strong>Not usable for sending.</strong> {{ usability.reason }}
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-12 col-xl-7">
+    <section class="card app-card mb-4" aria-labelledby="previewHeading">
+      <div class="card-header"><h2 id="previewHeading" class="h6 mb-0">Preview</h2></div>
+      <div class="card-body">
+        <p class="small text-body-secondary mb-2">Rendered with example values:</p>
+        <div class="chat-bubble">{{ rendered.full_text|linebreaksbr }}</div>
+      </div>
+    </section>
+
+    <section class="card app-card" aria-labelledby="sourceHeading">
+      <div class="card-header"><h2 id="sourceHeading" class="h6 mb-0">Template text</h2></div>
+      <div class="card-body">
+        {% if template.header_text %}
+          <h3 class="h6 small text-uppercase text-body-secondary">Header</h3>
+          <pre class="small border rounded p-2 bg-light">{{ template.header_text }}</pre>
+        {% endif %}
+
+        <h3 class="h6 small text-uppercase text-body-secondary">Body</h3>
+        <pre class="small border rounded p-2 bg-light">{{ template.body_text }}</pre>
+
+        {% if template.footer_text %}
+          <h3 class="h6 small text-uppercase text-body-secondary">Footer</h3>
+          <pre class="small border rounded p-2 bg-light mb-0">{{ template.footer_text }}</pre>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card mb-4" aria-labelledby="detailsHeading">
+      <div class="card-header"><h2 id="detailsHeading" class="h6 mb-0">Details</h2></div>
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-5 text-body-secondary">Name</dt>
+          <dd class="col-7 font-monospace">{{ template.name }}</dd>
+
+          <dt class="col-5 text-body-secondary">Language</dt>
+          <dd class="col-7">{{ template.language }}</dd>
+
+          <dt class="col-5 text-body-secondary">Origin</dt>
+          <dd class="col-7">
+            {% if template.is_local %}
+              <span class="badge text-bg-warning">Local (development)</span>
+            {% else %}
+              <span class="badge text-bg-light border">Synced from Meta</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-5 text-body-secondary">Approval status</dt>
+          <dd class="col-7">{{ template.get_status_display }}</dd>
+
+          {% if template.rejection_reason %}
+            <dt class="col-5 text-body-secondary">Rejection reason</dt>
+            <dd class="col-7 text-danger">{{ template.rejection_reason }}</dd>
+          {% endif %}
+
+          <dt class="col-5 text-body-secondary">Used by</dt>
+          <dd class="col-7">{{ campaign_count }} campaign{{ campaign_count|pluralize }}</dd>
+
+          {% if template.synced_at %}
+            <dt class="col-5 text-body-secondary">Last synced</dt>
+            <dd class="col-7">{{ template.synced_at|date:"j M Y, H:i" }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </section>
+
+    <section class="card app-card" aria-labelledby="variablesHeading">
+      <div class="card-header"><h2 id="variablesHeading" class="h6 mb-0">Variables</h2></div>
+      <div class="card-body">
+        {% if template.variables %}
+          <p class="small text-body-secondary">
+            Each campaign using this template supplies a value for every placeholder.
+          </p>
+          <ul class="list-unstyled mb-0 small">
+            {% for token in template.variables %}
+              <li class="py-1"><code>&#123;&#123;{{ token }}&#125;&#125;</code></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="small text-body-secondary mb-0">
+            This template has no variables; every recipient gets identical text.
+          </p>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+{% endblock %}

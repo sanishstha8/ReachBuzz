@@ -1,9 +1,10 @@
-# ReBuzz
+# ReBuzz — Business Messaging & Automation Platform
 
-**WhatsApp campaigns for your business**
+A WhatsApp Business messaging and campaign management platform for businesses to
+send, manage, and track customer communications.
 
-A Django web application for managing opted-in contacts and sending message
-campaigns through the **official Meta WhatsApp Business Platform Cloud API**.
+Built on Django, sending exclusively through the **official Meta WhatsApp
+Business Platform Cloud API**.
 
 > **Scope and compliance.** This project uses only Meta's official Cloud API. It does
 > not automate WhatsApp Web, does not use unofficial WhatsApp libraries, does not scrape

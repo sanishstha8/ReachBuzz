@@ -40,6 +40,21 @@ class TestBrandName:
         body = client.get(reverse("accounts:login")).content.decode()
         assert "Something Else" in body
 
+    @override_settings(SITE_TAGLINE="Business Messaging & Automation Platform")
+    def test_tagline_appears_on_the_sign_in_page(self, client: Client) -> None:
+        body = client.get(reverse("accounts:login")).content.decode()
+        assert "Business Messaging &amp; Automation Platform" in body
+
+    @override_settings(SITE_TAGLINE="")
+    def test_an_empty_tagline_is_simply_omitted(self, client: Client) -> None:
+        body = client.get(reverse("accounts:login")).content.decode()
+        assert "auth-card__tagline" not in body
+
+    @override_settings(SITE_DESCRIPTION="A WhatsApp Business messaging platform.")
+    def test_description_becomes_the_meta_description(self, auth_client: Client) -> None:
+        body = auth_client.get(reverse("dashboard:home")).content.decode()
+        assert '<meta name="description" content="A WhatsApp Business messaging platform.">' in body
+
     def test_no_credential_reaches_the_template_context(self, auth_client: Client) -> None:
         from core.context_processors import site_context
 

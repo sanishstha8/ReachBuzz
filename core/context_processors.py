@@ -19,6 +19,8 @@ def site_context(request: HttpRequest) -> dict[str, object]:
         # their own site_name into the context, which would shadow ours and
         # render the bare host name on the sign-in page.
         "brand_name": settings.SITE_NAME,
+        "brand_tagline": settings.SITE_TAGLINE,
+        "brand_description": settings.SITE_DESCRIPTION,
         "business_display_name": settings.BUSINESS_DISPLAY_NAME,
         "support_email": settings.SUPPORT_EMAIL,
         "whatsapp_provider": provider,

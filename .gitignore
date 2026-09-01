@@ -33,6 +33,9 @@ db.sqlite3-journal
 local_settings.py
 
 # ---- Celery ----------------------------------------------------------------
+# Kombu's filesystem transport writes exchange files into the working
+# directory when that broker is used for local development.
+/control/
 celerybeat-schedule
 celerybeat-schedule.*
 celerybeat.pid

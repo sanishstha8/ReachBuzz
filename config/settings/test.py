@@ -23,7 +23,7 @@ if _ENV_FILE.exists():
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-used-anywhere-else")
 os.environ.setdefault(
     "DATABASE_URL",
-    "postgres://postgres:postgres@localhost:5432/whatsapp_bulk_messaging",
+    "postgres://postgres:postgres@localhost:5432/rebuzz",
 )
 # Tests run against a throwaway database that Django creates as
 # test_<NAME>; the developer's data is never touched.

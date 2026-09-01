@@ -219,10 +219,10 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "WhatsApp Bulk Messaging API",
+    "TITLE": "ReBuzz API",
     "DESCRIPTION": (
-        "REST API for managing opted-in WhatsApp contacts and sending campaigns "
-        "through the Meta WhatsApp Business Platform Cloud API."
+        "ReBuzz REST API. Manages opted-in contacts and sends campaigns through "
+        "the Meta WhatsApp Business Platform Cloud API."
     ),
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
@@ -322,7 +322,7 @@ CAMPAIGN_MAX_RECIPIENTS = env.int("CAMPAIGN_MAX_RECIPIENTS", default=5_000)
 # Branding shown in the UI (see core.context_processors)
 # ---------------------------------------------------------------------------
 
-SITE_NAME = env("SITE_NAME", default="WhatsApp Bulk Messaging")
+SITE_NAME = env("SITE_NAME", default="ReBuzz")
 BUSINESS_DISPLAY_NAME = env("BUSINESS_DISPLAY_NAME", default="")
 SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="")
 

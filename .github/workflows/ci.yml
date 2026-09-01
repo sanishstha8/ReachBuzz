@@ -22,7 +22,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: whatsapp_bulk_messaging
+          POSTGRES_DB: rebuzz
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
@@ -35,7 +35,7 @@ jobs:
       # needs no Redis and — importantly — no Meta credentials.
       DJANGO_SETTINGS_MODULE: config.settings.test
       SECRET_KEY: ci-only-secret-key-not-used-anywhere-else
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/whatsapp_bulk_messaging
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rebuzz
       DEBUG: "False"
 
     steps:

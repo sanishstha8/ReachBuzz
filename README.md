@@ -1,7 +1,9 @@
-# WhatsApp Bulk Messaging
+# ReBuzz
 
-A Django web application for managing opted-in WhatsApp contacts and sending
-message campaigns through the **official Meta WhatsApp Business Platform Cloud API**.
+**WhatsApp campaigns for your business**
+
+A Django web application for managing opted-in contacts and sending message
+campaigns through the **official Meta WhatsApp Business Platform Cloud API**.
 
 > **Scope and compliance.** This project uses only Meta's official Cloud API. It does
 > not automate WhatsApp Web, does not use unofficial WhatsApp libraries, does not scrape
@@ -168,19 +170,19 @@ python -c "from django.core.management.utils import get_random_secret_key as k; 
 Create the database and a dedicated role:
 
 ```bash
-psql -U postgres -c "CREATE DATABASE whatsapp_bulk_messaging;"
-psql -U postgres -c "CREATE USER wbm_user WITH PASSWORD 'change-me';"
-psql -U postgres -c "ALTER ROLE wbm_user SET client_encoding TO 'utf8';"
-psql -U postgres -c "ALTER ROLE wbm_user SET default_transaction_isolation TO 'read committed';"
-psql -U postgres -c "ALTER ROLE wbm_user SET timezone TO 'UTC';"
-psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE whatsapp_bulk_messaging TO wbm_user;"
-psql -U postgres -d whatsapp_bulk_messaging -c "GRANT ALL ON SCHEMA public TO wbm_user;"
+psql -U postgres -c "CREATE DATABASE rebuzz;"
+psql -U postgres -c "CREATE USER rebuzz WITH PASSWORD 'change-me';"
+psql -U postgres -c "ALTER ROLE rebuzz SET client_encoding TO 'utf8';"
+psql -U postgres -c "ALTER ROLE rebuzz SET default_transaction_isolation TO 'read committed';"
+psql -U postgres -c "ALTER ROLE rebuzz SET timezone TO 'UTC';"
+psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE rebuzz TO rebuzz;"
+psql -U postgres -d rebuzz -c "GRANT ALL ON SCHEMA public TO rebuzz;"
 ```
 
 Point `DATABASE_URL` at it:
 
 ```
-DATABASE_URL=postgres://wbm_user:change-me@localhost:5432/whatsapp_bulk_messaging
+DATABASE_URL=postgres://rebuzz:change-me@localhost:5432/rebuzz
 ```
 
 Then apply the migrations:

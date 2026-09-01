@@ -13,7 +13,7 @@ from celery.schedules import crontab
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
 
-app = Celery("whatsapp_bulk_messaging")
+app = Celery("rebuzz")
 
 # All Celery settings live in Django settings under the CELERY_ prefix.
 app.config_from_object("django.conf:settings", namespace="CELERY")

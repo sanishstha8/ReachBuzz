@@ -15,7 +15,10 @@ def site_context(request: HttpRequest) -> dict[str, object]:
     """
     provider = getattr(settings, "WHATSAPP_PROVIDER", "mock")
     return {
-        "site_name": settings.SITE_NAME,
+        # Deliberately not "site_name": django.contrib.auth's views inject
+        # their own site_name into the context, which would shadow ours and
+        # render the bare host name on the sign-in page.
+        "brand_name": settings.SITE_NAME,
         "business_display_name": settings.BUSINESS_DISPLAY_NAME,
         "support_email": settings.SUPPORT_EMAIL,
         "whatsapp_provider": provider,

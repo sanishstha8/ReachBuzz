@@ -1,0 +1,4 @@
+# Convenience entry point. Install a specific environment instead:
+#   pip install -r requirements/dev.txt     (local development)
+#   pip install -r requirements/prod.txt    (production)
+-r requirements/dev.txt

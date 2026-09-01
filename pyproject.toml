@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = [".venv", "migrations", "staticfiles", "media"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "DJ", "S"]
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "B008",   # function calls in argument defaults (common in DRF)
+    "S101",   # asserts are expected in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/*" = ["S105", "S106"]  # hardcoded test passwords are fine
+"config/settings/*" = ["F403", "F405", "S105"]  # test settings hold placeholder, non-secret values
+"conftest.py" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["accounts", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "whatsapp"]
+
+[tool.coverage.run]
+source = ["accounts", "campaigns", "contacts", "core", "dashboard", "messaging", "whatsapp"]
+omit = ["*/migrations/*", "*/tests/*", "manage.py", "config/wsgi.py", "config/asgi.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

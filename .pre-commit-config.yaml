@@ -1,0 +1,53 @@
+# Local guard rails. Install once with:
+#
+#     pip install pre-commit && pre-commit install
+#
+# Deliberately does NOT include `ruff-format`: the codebase is not
+# formatter-managed, and enabling it would rewrite every file in one commit.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^.*\.(md|csv)$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      # The two that matter most for this project: credentials must never
+      # reach the repository.
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: local
+    hooks:
+      - id: no-env-file
+        name: refuse to commit a .env file
+        entry: .env must never be committed; it holds real credentials
+        language: fail
+        files: ^\.env$
+
+      - id: django-checks
+        name: django system checks
+        entry: python manage.py check
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: missing-migrations
+        name: model changes have migrations
+        entry: python manage.py makemigrations --check --dry-run
+        language: system
+        pass_filenames: false
+        types: [python]

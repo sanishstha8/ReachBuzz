@@ -1,0 +1,24 @@
+# Core framework
+Django>=5.2,<6.0
+djangorestframework>=3.15
+django-filter>=25.1
+drf-spectacular>=0.28
+
+# Database
+psycopg[binary]>=3.2
+
+# Configuration
+django-environ>=0.12
+
+# Background processing
+celery>=5.5
+redis>=5.2
+
+# Domain utilities
+phonenumbers>=9.0
+
+# Static files
+whitenoise>=6.9
+
+# HTTP client for the Meta Cloud API (Phase 7)
+requests>=2.32

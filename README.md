@@ -1,5 +1,7 @@
 # ReBuzz — Business Messaging & Automation Platform
 
+[![CI](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml)
+
 A WhatsApp Business messaging and campaign management platform for businesses to
 send, manage, and track customer communications.
 

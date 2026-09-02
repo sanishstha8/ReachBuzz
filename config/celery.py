@@ -24,6 +24,7 @@ app.conf.task_routes = {
     "whatsapp.tasks.dispatch_campaign": {"queue": "whatsapp_send"},
     "whatsapp.tasks.simulate_status_callbacks": {"queue": "whatsapp_send"},
     "whatsapp.tasks.process_webhook_event": {"queue": "whatsapp_webhook"},
+    "whatsapp.tasks.process_pending_webhooks": {"queue": "whatsapp_webhook"},
 }
 
 # Scheduled campaigns are launched by a periodic sweep rather than a timer per
@@ -33,6 +34,14 @@ app.conf.beat_schedule = {
         "task": "whatsapp.tasks.run_due_campaigns",
         "schedule": crontab(minute="*"),
         "options": {"queue": "default", "expires": 55},
+    },
+    # The webhook endpoint stores a payload and answers 200 before queueing the
+    # work, so a broker blip between those two steps would strand a delivery
+    # report. This notices anything left behind.
+    "process-pending-webhooks": {
+        "task": "whatsapp.tasks.process_pending_webhooks",
+        "schedule": crontab(minute="*/5"),
+        "options": {"queue": "whatsapp_webhook", "expires": 240},
     },
 }
 

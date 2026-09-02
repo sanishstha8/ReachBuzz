@@ -200,3 +200,51 @@ def extract_variables(text: str) -> list[str]:
         if token not in seen:
             seen.append(token)
     return seen
+
+
+class WebhookEventStatus(models.TextChoices):
+    RECEIVED = "received", _("Received")
+    PROCESSED = "processed", _("Processed")
+    FAILED = "failed", _("Failed")
+    REJECTED = "rejected", _("Rejected (bad signature)")
+
+
+class WebhookEvent(BaseModel):
+    """
+    A raw webhook delivery from Meta, stored before anything interprets it.
+
+    Persisting first and processing afterwards is what lets the endpoint answer
+    200 in milliseconds. That matters more than it sounds: Meta retries a
+    non-200 with decreasing frequency for up to seven days, so an endpoint that
+    does its work inline turns one slow database query into a week of duplicate
+    deliveries.
+
+    Keeping the untouched payload also means a parsing bug is replayable. The
+    event is evidence; our reading of it is not.
+    """
+
+    payload = models.JSONField(default=dict, blank=True)
+    signature_valid = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=16,
+        choices=WebhookEventStatus.choices,
+        default=WebhookEventStatus.RECEIVED,
+        db_index=True,
+    )
+    status_count = models.PositiveIntegerField(
+        default=0, help_text=_("Delivery statuses found in this payload.")
+    )
+    message_count = models.PositiveIntegerField(
+        default=0, help_text=_("Inbound messages found in this payload.")
+    )
+    processed_at = models.DateTimeField(null=True, blank=True)
+    error_message = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = _("webhook event")
+        verbose_name_plural = _("webhook events")
+        indexes = [models.Index(fields=["status", "-created_at"], name="webhook_status_recent_idx")]
+
+    def __str__(self) -> str:
+        return f"{self.get_status_display()} at {self.created_at:%Y-%m-%d %H:%M}"

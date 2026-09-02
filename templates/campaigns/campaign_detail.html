@@ -57,6 +57,13 @@
     {% endif %}
   {% endif %}
 
+  {% if message_total %}
+    <a href="{% url 'dashboard:campaign-recipients-report' campaign.pk %}"
+       class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-download me-1" aria-hidden="true"></i>Export recipients
+    </a>
+  {% endif %}
+
   {% if campaign.is_editable and user.can_manage_campaigns %}
     <a href="{% url 'campaigns:delete' campaign.pk %}" class="btn btn-sm btn-outline-danger ms-auto">
       <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete
@@ -85,7 +92,8 @@
   <section class="card app-card mb-4" aria-labelledby="progressHeading">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h2 id="progressHeading" class="h6 mb-0">Progress</h2>
-      <span class="small text-body-secondary" data-stat="progress_percent">{{ stats.progress_percent }}</span>
+      {% comment %}The unit sits outside the span the poller rewrites.{% endcomment %}
+      <span class="small text-body-secondary"><span data-stat="progress_percent">{{ stats.progress_percent }}</span>% complete</span>
     </div>
     <div class="card-body">
       <div class="progress mb-3" role="progressbar"
@@ -102,6 +110,45 @@
         {% include "campaigns/partials/stat_pill.html" with label="Read" value=stats.read key="read" tone="success" %}
         {% include "campaigns/partials/stat_pill.html" with label="Failed" value=stats.failed key="failed" tone="danger" %}
       </div>
+
+      {% if stats.reached %}
+        <p class="report-note mb-0 mt-3">
+          {{ stats.delivery_rate }}% of the {{ stats.reached|intcomma }} message{{ stats.reached|pluralize }}
+          the provider accepted were confirmed delivered.
+          {% if stats.failed %}{{ stats.failure_rate }}% of all recipients failed.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}
+
+{% if failure_reasons %}
+  <section class="card app-card mb-4" aria-labelledby="reasonsHeading">
+    <div class="card-header">
+      <h2 id="reasonsHeading" class="h6 mb-0">Failure reasons</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">
+          Failures grouped by the error the provider reported
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Reason</th>
+            <th scope="col">Code</th>
+            <th scope="col" class="text-end">Messages</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for reason in failure_reasons %}
+            <tr>
+              <th scope="row" class="fw-normal">{{ reason.label }}</th>
+              <td class="font-monospace small">{{ reason.error_code|default:"—" }}</td>
+              <td class="text-end tabular">{{ reason.count|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
   </section>
 {% endif %}

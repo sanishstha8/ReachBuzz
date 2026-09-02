@@ -56,6 +56,11 @@ class AuditAction(models.TextChoices):
 
     TEMPLATES_SYNCED = "templates_synced", "Templates synced from provider"
 
+    # An export puts contact details and message history on someone's laptop.
+    # That is a data-protection event, so it belongs in the same trail as a
+    # consent change rather than only in a web server log.
+    REPORT_EXPORTED = "report_exported", "Report exported"
+
 
 class AuditLog(UUIDPrimaryKeyModel):
     """

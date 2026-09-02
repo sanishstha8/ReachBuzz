@@ -536,3 +536,202 @@ pre {
   font-size: 0.8125rem;
   color: var(--app-text-muted);
 }
+
+/* --------------------------------------------------------------------------
+   Charts and reports
+
+   The series colours are an ordinal ramp for the message lifecycle (pending is
+   the lightest step, read the darkest) plus the reserved critical red for
+   failure. Marks wear them; text never does. See dashboard/charts.py, which
+   holds the same values and the note on how they were validated.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --viz-read: #0a5a4f;
+  --viz-delivered: #12806f;
+  --viz-sent: #34a294;
+  --viz-pending: #6bbcaf;
+  --viz-failed: #d03b3b;
+}
+
+.viz {
+  margin: 0;
+}
+
+.viz__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.viz__tick {
+  font-size: 10px;
+  fill: var(--app-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chrome recedes: hairline, solid, one step off the surface. Never dashed —
+   dashing reads as "projection" or "threshold" when it is just a grid. */
+.viz__grid {
+  stroke: var(--app-border);
+  stroke-width: 1;
+}
+
+.viz__axis {
+  stroke: #cbd2da;
+  stroke-width: 1;
+}
+
+.viz__hit {
+  fill: transparent;
+}
+
+.viz__col {
+  cursor: default;
+}
+
+.viz__col:hover path,
+.viz__col:focus-visible path {
+  opacity: 0.82;
+}
+
+.viz__col:focus {
+  outline: none;
+}
+
+.viz__col:focus-visible .viz__hit {
+  fill: rgba(18, 140, 126, 0.08);
+}
+
+.viz__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}
+
+.viz__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.viz__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.viz__key-value {
+  color: var(--app-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz__table {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.viz__table > summary {
+  cursor: pointer;
+  color: var(--app-text-muted);
+}
+
+.viz-tooltip {
+  position: absolute;
+  z-index: 1080;
+  min-width: 9rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.viz-tooltip__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.viz-tooltip__label {
+  color: var(--app-text-muted);
+}
+
+.viz-tooltip__total,
+.viz-tooltip__value {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-tooltip__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.0625rem 0;
+}
+
+/* A short stroke, not a filled box: at this density a box is data-weight ink
+   doing a label's job. */
+.viz-tooltip__key {
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.viz-tooltip__name {
+  color: var(--app-text-muted);
+}
+
+/* The outcome mix beside a campaign row: a chart would be noise, but the shape
+   still tells the story. */
+.mix-bar {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #eef1f5;
+  min-width: 5rem;
+}
+
+.mix-bar__segment {
+  height: 100%;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.875rem 1.125rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-filters__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.report-note {
+  font-size: 0.75rem;
+  color: var(--app-text-muted);
+}

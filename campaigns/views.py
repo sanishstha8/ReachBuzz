@@ -30,7 +30,7 @@ from campaigns.models import Campaign, CampaignStatus
 from core.exceptions import DomainError
 from core.mixins import ActiveUserRequiredMixin, CapabilityRequiredMixin, PageTitleMixin
 from messaging.models import Message, MessageStatus
-from messaging.services import campaign_stats
+from messaging.services import campaign_failure_reasons, campaign_stats
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,11 @@ class CampaignDetailView(ActiveUserRequiredMixin, PageTitleMixin, DetailView):
         context["failed_messages"] = base.filter(status=MessageStatus.FAILED)[:50]
         context["recent_messages"] = base.order_by("contact__name")[:25]
         context["message_total"] = base.count()
+
+        # Grouped failures answer a different question from the list of failed
+        # messages above it: "is this one bad number, or is something wrong
+        # with the connection?" — which the per-row list cannot show at a glance.
+        context["failure_reasons"] = campaign_failure_reasons(campaign)
 
         if campaign.is_editable:
             context["preview"] = services.preview_campaign(campaign)

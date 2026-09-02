@@ -168,7 +168,7 @@ class Command(BaseCommand):
     # -- Creation -----------------------------------------------------------
 
     def _create_contacts(self, count: int, user) -> list:
-        from contacts.models import ContactStatus, OptInSource
+        from contacts.models import Contact, ContactStatus, OptInSource
         from contacts.services import create_contact, set_consent
         from core.exceptions import ConflictError
 
@@ -189,16 +189,28 @@ class Command(BaseCommand):
             else:
                 status = ContactStatus.BLOCKED
 
+            phone_number = f"+97798{index + 10_000_000:08d}"
             try:
                 contact = create_contact(
                     name=name,
-                    phone_number=f"+97798{index + 10_000_000:08d}",
+                    phone_number=phone_number,
                     email=f"demo{index}@example.invalid",
                     status=status,
                     notes=MARKER,
                     user=user,
                 )
             except ConflictError:
+                # Running the command twice is an ordinary thing to do, and
+                # every number collides on the second run. Reuse the row we
+                # made last time rather than ending up with no audience at
+                # all — but only if it is ours: a number a person entered
+                # themselves is not demo data to be swept into demo groups.
+                contact = Contact.objects.filter(
+                    phone_number=phone_number, notes__contains=MARKER
+                ).first()
+                if contact is None:
+                    continue
+                created.append(contact)
                 continue
 
             if consenting:
@@ -225,9 +237,12 @@ class Command(BaseCommand):
             group, _ = ContactGroup.objects.get_or_create(
                 name=name, defaults={"description": f"{description} {MARKER}"}
             )
-            members = random.sample(contacts, k=max(1, int(len(contacts) * random.uniform(0.3, 0.7))))
-            add_contacts_to_group_bulk([group], members, user=user)
             groups.append(group)
+            if not contacts:
+                continue
+            share = int(len(contacts) * random.uniform(0.3, 0.7))
+            members = random.sample(contacts, k=max(1, min(share, len(contacts))))
+            add_contacts_to_group_bulk([group], members, user=user)
 
         self.stdout.write(f"Groups        {len(groups)}")
         return groups

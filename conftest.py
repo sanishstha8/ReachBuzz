@@ -244,3 +244,20 @@ def http():
 
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
         yield mock
+
+
+@pytest.fixture(autouse=True)
+def _clean_cache():
+    """
+    Every test starts with an empty cache.
+
+    The cache now holds state that decides behaviour — the sign-in throttle's
+    failure counter and the broker health probe — and it is process-wide, not
+    per-test. Without this, a test that exhausts the login limit would lock out
+    whichever test happened to run next, and only in that ordering.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()

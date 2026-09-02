@@ -55,7 +55,10 @@ class CampaignViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
         return (
             Campaign.objects.all()
             .select_related("template", "created_by")
-            .prefetch_related("audience_entries__group")
+            # `audience_groups` for the serializer, `audience_entries__group`
+            # for the through-model walkers. Same rows, different paths, and
+            # prefetching one does not cover the other.
+            .prefetch_related("audience_groups", "audience_entries__group")
         )
 
     def get_serializer_class(self):

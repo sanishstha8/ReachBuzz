@@ -142,6 +142,14 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Brute-force protection for the sign-in *form*. The REST login is throttled
+# separately by DEFAULT_THROTTLE_RATES["login"]; both doors need a lock.
+# Counted per client address rather than per account, so that knowing an
+# operator's email address is not enough to lock them out. Set the limit to 0
+# to disable.
+LOGIN_ATTEMPT_LIMIT = env.int("LOGIN_ATTEMPT_LIMIT", default=10)
+LOGIN_ATTEMPT_WINDOW_SECONDS = env.int("LOGIN_ATTEMPT_WINDOW_SECONDS", default=300)
+
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "accounts:login"

@@ -60,7 +60,13 @@ class ContactViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
     ordering = ["name"]
 
     def get_queryset(self):
-        return Contact.objects.all().prefetch_related("group_memberships__group")
+        # Both relations, because they are different paths to the same rows:
+        # the serializer reads the `groups` many-to-many, while `group_names`
+        # walks the `group_memberships` through model. Prefetching only the
+        # through relation — as this did — leaves the serializer issuing one
+        # query per contact, which is invisible locally and a page-load per
+        # row in production.
+        return Contact.objects.all().prefetch_related("groups", "group_memberships__group")
 
     def get_serializer_class(self):
         if self.action == "create":

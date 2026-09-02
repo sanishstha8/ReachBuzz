@@ -41,6 +41,7 @@ Business Platform Cloud API**.
 20. [Sending pipeline](#20-sending-pipeline)
 21. [Dashboard, monitoring and reports](#21-dashboard-monitoring-and-reports)
 22. [Meta Cloud API integration](#22-meta-cloud-api-integration)
+23. [Security posture](#23-security-posture)
 
 ---
 
@@ -422,6 +423,27 @@ The suite runs against `config.settings.test`, which forces `WHATSAPP_PROVIDER=m
 runs Celery tasks inline, and disables API throttles. It needs a reachable PostgreSQL
 server but **no WhatsApp credentials and no Redis**.
 
+Three project-wide fixtures in `conftest.py` keep that true rather than merely intended:
+
+| Fixture | What it enforces |
+|---|---|
+| `http` | Intercepts `requests`; an unregistered outbound call is an error, not a phone call to Meta |
+| `_clean_cache` | Empties the cache between tests, so the sign-in throttle and broker probe cannot leak across them |
+| `_no_dispatcher_by_default` | No message sender is registered unless a test asks, keeping the "sending unavailable" path honest |
+
+Some suites are about a property rather than a feature, and are worth knowing about
+before changing code near them:
+
+- **`core/tests/test_query_counts.py`** asserts that no page or endpoint issues more
+  queries as the data grows. It compares two dataset sizes rather than pinning exact
+  counts — an N+1 is invisible locally and a page-load per row in production, and a test
+  that pins numbers gets bumped without being read.
+- **`core/tests/test_settings_documentation.py`** fails if a setting is read but absent
+  from `.env.example`, or advertised there and read by nothing.
+- **`core/tests/test_seed_demo.py`** covers the seeder's refusal to run outside
+  development, which is the only thing standing between fabricated contacts and a system
+  holding live credentials.
+
 Override the test database if needed:
 
 ```bash
@@ -460,11 +482,15 @@ DATABASE_URL=postgres://user:pass@localhost:5432/wbm_test pytest
 | 5 | Celery, Redis, queue, mock provider | ✅ Complete |
 | 6 | Dashboard, campaign monitoring, reports | ✅ Complete |
 | 7 | Meta Cloud API integration, webhooks | ✅ Complete |
-| 8 | Testing, security review, optimization, documentation | ⏳ Next |
+| 8 | Testing, security review, optimization, documentation | ✅ Complete |
 
 Navigation items for modules that have not shipped yet are visible but disabled, and the
 dashboard shows an em dash rather than a fabricated number for statistics it cannot yet
 compute.
+
+All eight phases are complete. The one thing no amount of testing substitutes for is a
+send through a real WhatsApp Business Account — see the verification checklist at the end
+of section 22.
 
 ---
 
@@ -933,3 +959,74 @@ WABA, walk through this once:
 5. Reply `STOP` from that number, and confirm the contact shows as opted out with source
    "Recipient replied STOP" and an audit entry.
 6. Confirm no credential appears anywhere in the worker log.
+
+---
+
+## 23. Security posture
+
+What the application does to protect itself, and — more usefully — the reasoning, so a
+future change can tell which parts are load-bearing.
+
+### Authentication
+
+Sign-in is by email with Django's session framework; the session key rotates on login.
+Sessions expire after `SESSION_COOKIE_AGE` of inactivity, cookies are `HttpOnly` and
+`SameSite=Lax`, and `Secure` in production. Logout is POST-only, so a prefetched link
+cannot sign someone out.
+
+**Both login doors are rate limited.** The REST login has a DRF throttle
+(`THROTTLE_LOGIN`); the HTML form has its own counter (`LOGIN_ATTEMPT_LIMIT`). Having
+only the first meant the limit could be walked around by posting where a browser posts.
+Attempts are counted **per client address, never per account**: locking an account after
+N failures would let anyone who knows an operator's email address lock them out, trading
+a brute-force risk for a denial-of-service one. The block expires on its own.
+
+Failed sign-ins are audited with the attempted identifier and never the password. The
+wrong-password and unknown-email responses are identical, and so is the lockout message —
+a message that varied would turn the throttle into a user-enumeration oracle.
+
+### Authorization
+
+Every HTML view carries an auth mixin except the sign-in and sign-out pages; every API
+view names an explicit permission class. Views ask for a *capability*
+(`can_manage_contacts`, `can_launch_campaigns`) rather than comparing role strings, so the
+matrix lives in one place — `accounts.models.User`.
+
+Two actions are deliberately narrower than the rest. Launching a campaign is its own
+capability, because it is the only irreversible action in the system. Template sync is
+administrator-only, because one call rewrites the approval status of every template.
+
+### The webhook endpoint
+
+The only unauthenticated, CSRF-exempt route. Its signature check is the authentication,
+and nothing is parsed, stored or queued until the HMAC over the raw body verifies — see
+section 14 for why each of those words matters.
+
+Both HMAC comparisons — the webhook signature and the verification token — use
+`compare_digest` **on bytes**. The string form raises `TypeError` on non-ASCII input, and
+both values come from a stranger; comparing as bytes is what keeps the answer a 403
+instead of a 500.
+
+### Data handling
+
+- **No uploaded file is ever written to disk.** CSV imports are validated for extension,
+  size and encoding, then parsed in memory; only the filename is stored, as text. There is
+  no `FileField` in the project and nothing is served from `MEDIA_ROOT` in production.
+- **Exports are escaped against spreadsheet formula injection** and audited. See
+  section 21.
+- **No credential is logged, rendered, or returned.** `core.logging_filters` redacts as a
+  last line of defence, and tests assert that no token appears in any page, API response
+  or export.
+- **Queries are parameterised throughout.** There is no raw SQL, no `eval`, no `pickle`,
+  and no template autoescape bypass on user-controlled data anywhere in the project.
+
+### What has *not* been done
+
+- **No live penetration test**, and no run against a real WhatsApp Business Account.
+- **Any active user can export the full consent register**, including phone numbers.
+  That matches the UI — a viewer can already page through every contact — and every export
+  is audited, but bulk export and paged reading are different in practice. If your threat
+  model cares, narrow `ReportDownloadView` to `CapabilityRequiredMixin`.
+- **`LoginView.redirect_authenticated_user` is on**, which Django notes lets another site
+  detect whether a visitor is signed in here by requesting an image URL. Harmless for a
+  private internal tool; worth knowing if this is ever exposed more widely.

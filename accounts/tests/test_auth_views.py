@@ -172,3 +172,118 @@ class TestAuthAuditing:
     def test_logout_is_audited(self, auth_client: Client, operator) -> None:
         auth_client.post(reverse("accounts:logout"))
         assert AuditLog.objects.filter(action=AuditAction.LOGOUT, user=operator).exists()
+
+
+class TestSignInThrottling:
+    """
+    The REST login has been throttled since Phase 2; the form was not, so the
+    rate limit could be walked around by posting where a browser posts.
+    """
+
+    def attempt(self, client: Client, email: str = "operator@example.com") -> object:
+        return client.post(
+            reverse("accounts:login"), {"username": email, "password": "wrong-password"}
+        )
+
+    def test_repeated_failures_are_eventually_refused(
+        self, client: Client, operator, settings
+    ) -> None:
+        settings.LOGIN_ATTEMPT_LIMIT = 3
+
+        for _ in range(3):
+            self.attempt(client)
+
+        response = self.attempt(client)
+
+        assert "Too many sign-in attempts" in response.content.decode()
+
+    def test_the_password_is_not_checked_once_locked_out(
+        self, client: Client, operator, password, settings
+    ) -> None:
+        """
+        Refusing before authenticating, not after — otherwise an attacker could
+        still measure the result they were supposed to be denied.
+        """
+        settings.LOGIN_ATTEMPT_LIMIT = 2
+        for _ in range(2):
+            self.attempt(client)
+
+        response = client.post(
+            reverse("accounts:login"),
+            {"username": operator.email, "password": password},
+        )
+
+        assert response.status_code == 200  # re-rendered, not signed in
+        assert "_auth_user_id" not in client.session
+
+    def test_a_successful_sign_in_clears_the_counter(
+        self, client: Client, operator, password, settings
+    ) -> None:
+        settings.LOGIN_ATTEMPT_LIMIT = 3
+        self.attempt(client)
+        self.attempt(client)
+
+        client.post(
+            reverse("accounts:login"), {"username": operator.email, "password": password}
+        )
+        client.post(reverse("accounts:logout"))
+
+        from accounts import throttling
+
+        request = type("R", (), {"META": {"REMOTE_ADDR": "127.0.0.1"}})()
+        assert throttling.failure_count(request) == 0
+
+    def test_the_lockout_message_reveals_nothing_about_the_account(
+        self, client: Client, settings
+    ) -> None:
+        """
+        A message that differed for a real address would turn the lockout into
+        the enumeration oracle the sign-in form is careful to avoid.
+        """
+        settings.LOGIN_ATTEMPT_LIMIT = 1
+
+        self.attempt(client, "nobody@example.com")
+        unknown = self.attempt(client, "nobody@example.com").content.decode()
+
+        client.cookies.clear()
+        from django.core.cache import cache
+
+        cache.clear()
+        self.attempt(client, "operator@example.com")
+        known = self.attempt(client, "operator@example.com").content.decode()
+
+        assert "Too many sign-in attempts" in unknown
+        assert "Too many sign-in attempts" in known
+
+    def test_failures_are_still_audited_while_throttled(
+        self, client: Client, operator, settings
+    ) -> None:
+        """The counter decides when to stop checking; it is not the record."""
+        settings.LOGIN_ATTEMPT_LIMIT = 2
+        for _ in range(3):
+            self.attempt(client)
+
+        assert AuditLog.objects.filter(action=AuditAction.LOGIN_FAILED).exists()
+
+    def test_the_throttle_can_be_switched_off(self, client: Client, operator, settings) -> None:
+        settings.LOGIN_ATTEMPT_LIMIT = 0
+
+        for _ in range(20):
+            response = self.attempt(client)
+
+        assert "Too many sign-in attempts" not in response.content.decode()
+
+    def test_a_legitimate_user_is_unaffected(
+        self, client: Client, operator, password, settings
+    ) -> None:
+        settings.LOGIN_ATTEMPT_LIMIT = 3
+        self.attempt(client)
+
+        response = client.post(
+            reverse("accounts:login"),
+            {"username": operator.email, "password": password},
+            follow=True,
+        )
+
+        assert response.status_code == 200
+        assert "_auth_user_id" in client.session

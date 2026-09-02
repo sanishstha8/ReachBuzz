@@ -39,6 +39,7 @@ Business Platform Cloud API**.
 18. [Consent model](#18-consent-model)
 19. [Campaigns and templates](#19-campaigns-and-templates)
 20. [Sending pipeline](#20-sending-pipeline)
+21. [Dashboard, monitoring and reports](#21-dashboard-monitoring-and-reports)
 
 ---
 
@@ -66,7 +67,9 @@ permissions and policies of the connected Meta WhatsApp Business account.
 | Templates | Mirror of the WABA's approved templates, variable substitution, safe preview |
 | Sending | Celery + Redis, one job per recipient, retries with backoff, self-imposed rate ceiling, idempotent dispatch |
 | Webhooks | Signed Meta webhook endpoint, idempotent event handling, background processing |
-| Monitoring | Live campaign progress, status breakdown, failed-message detail |
+| Monitoring | Live campaign progress, status breakdown, grouped failure reasons, failed-message detail |
+| Dashboard | Activity chart, live "sending now" panel, recent failures, pipeline health |
+| Reports | Date-ranged overview, per-campaign performance, failure analysis, consent register, streamed CSV exports |
 | Compliance | Opt-in/opt-out state, inbound STOP handling, append-only audit log |
 | API | REST endpoints for every resource with OpenAPI docs at `/api/docs/` |
 
@@ -117,7 +120,7 @@ Meta webhook ──▶ signature check ──▶ persist raw event ──▶ 200
 | `campaigns` | Campaigns, audience resolution, lifecycle state machine |
 | `messaging` | Per-recipient `Message` records, status events, statistics |
 | `whatsapp` | Provider abstraction, templates, Celery send tasks, webhook endpoint |
-| `dashboard` | Aggregate statistics and monitoring pages |
+| `dashboard` | Aggregate statistics, monitoring pages, reporting API and CSV exports |
 
 The app is named `messaging`, not `messages`, to avoid shadowing `django.contrib.messages`.
 
@@ -260,6 +263,29 @@ python manage.py runserver
 - API documentation: <http://127.0.0.1:8000/api/docs/>
 
 `manage.py` defaults to `config.settings.local`. Override with `DJANGO_SETTINGS_MODULE`.
+
+### Demonstration data
+
+An empty database is a poor way to judge the dashboard and the reports page: an
+honest empty state is exactly what they are built to show, so there is nothing to look
+at. This fills in a few weeks of plausible sending history.
+
+```bash
+python manage.py seed_demo                                  # 120 contacts, 6 campaigns, 45 days
+python manage.py seed_demo --contacts 300 --days 90         # a bigger sample
+python manage.py seed_demo --clear                          # remove exactly what it created
+```
+
+It goes through the real services — `create_contact`, `set_consent`,
+`set_audience`, `materialize_messages`, `transition` — so consent is audited and the
+state machine is respected, and the audience it produces exercises the cases that
+matter: contacts who consented but are not active, and so still may not be messaged.
+The one thing it does directly is backdate timestamps at the end, because there is no
+honest way to ask the system to have sent something last Tuesday.
+
+It **refuses to run** unless `WHATSAPP_PROVIDER=mock` and `DEBUG=True`. These are
+fabricated people, and this system sends real messages. The last campaign is left as a
+draft so there is something to launch by hand and watch move through the real pipeline.
 
 ## 11. Running the Celery worker
 
@@ -410,8 +436,8 @@ DATABASE_URL=postgres://user:pass@localhost:5432/wbm_test pytest
 | 3 | Contacts, groups, CSV import | ✅ Complete |
 | 4 | Templates, campaigns, message records | ✅ Complete |
 | 5 | Celery, Redis, queue, mock provider | ✅ Complete |
-| 6 | Dashboard, campaign monitoring, reports | ⏳ Next |
-| 7 | Meta Cloud API integration, webhooks | ⏳ Planned |
+| 6 | Dashboard, campaign monitoring, reports | ✅ Complete |
+| 7 | Meta Cloud API integration, webhooks | ⏳ Next |
 | 8 | Testing, security review, optimization, documentation | ⏳ Planned |
 
 Navigation items for modules that have not shipped yet are visible but disabled, and the
@@ -684,3 +710,110 @@ celery -A config beat -l info
 | `default` | scheduled-campaign sweep |
 
 Separate queues so a burst of outbound sends never delays inbound status processing.
+
+---
+
+## 21. Dashboard, monitoring and reports
+
+Three pages answer three different questions, which is why they are three pages.
+
+| Page | Question | Scope |
+|---|---|---|
+| **Dashboard** (`/`) | What is happening right now? | Live |
+| **Campaign detail** (`/campaigns/{id}/`) | How is this one send going? | One campaign |
+| **Reports** (`/reports/`) | What happened over a period I choose? | A date range |
+
+Every figure on all three comes from `dashboard/services.py`, and the reporting API
+returns the same objects, so the HTML and the JSON cannot drift apart.
+
+### Two conventions worth knowing before reading a number
+
+**The status buckets are disjoint.** `pending`, `sent`, `delivered`, `read` and `failed`
+partition the messages in a period — `pending` gathers the three in-flight statuses, and
+the five sum to the total with no double counting. Where a cumulative figure is meant
+instead, it is named `reached` (everything the provider accepted, whatever happened next).
+
+**A message belongs to the day it was created**, which is the day its campaign was
+launched. Grouping by `sent_at` would move rows between days as retries land, and a report
+whose past changes underneath the reader is worse than one with a stated convention.
+
+One consequence worth stating plainly: **delivery rate is measured against `reached`, not
+against every message.** A message still queued has not failed to arrive — it has not been
+sent yet — so dividing by everything would let a large backlog drag a healthy campaign's
+delivery rate towards zero.
+
+### Live monitoring
+
+The dashboard's "Sending now" panel lists every campaign in `processing` or `paused` with
+its progress, and polls `/api/monitor/active-campaigns/` every ten seconds. Paused
+campaigns stay in the panel deliberately: an operator who has just stopped a send should
+not watch it vanish from the page they stopped it on. When the *set* of active campaigns
+changes the page reloads rather than being patched, because the panel is then the wrong
+shape. The campaign detail page polls its own stats endpoint on the same principle.
+
+### Charts
+
+Charts are inline SVG with no charting library and no build step. All geometry is computed
+in `dashboard/charts.py` and handed to the template as plain data, which is what makes it
+testable — a bar drawn at the wrong height still looks like a bar.
+
+The message lifecycle is an ordered sequence, so it takes a single-hue **ordinal ramp** in
+the product teal (pending is the lightest step, read the darkest) rather than five
+unrelated hues: the reader sees the order in the colour. Failure is not a stage of that
+sequence but a state, so it takes the reserved critical red and sits apart from the ramp.
+The ramp was validated against the white card surface — monotone lightness, adjacent ΔL
+≥ 0.06, light end 2.23:1 — and the one place the ramp meets the status colour clears the
+colour-vision separation floor at ΔE 18.0.
+
+Because the lightest step is below 3:1 against the card, every chart ships a **"Show the
+numbers" table**. That is a requirement, not a nicety: no value is ever available only by
+looking at a colour, or only by hovering. Days with no activity are drawn as gaps rather
+than closed up, and a period with nothing in it says so instead of drawing a flat line at
+zero.
+
+### CSV exports
+
+| Report | Contents | Scope |
+|---|---|---|
+| Campaign performance | one row per campaign launched, with delivery and failure rates | period |
+| Message detail | one row per recipient message, with its status timeline | period |
+| Failure reasons | distinct provider errors and how often each occurred | period |
+| Consent register | every contact and the recorded basis for messaging them | **current state** |
+| Campaign recipients | one campaign's recipients, from its monitoring page | one campaign |
+
+The consent register ignores the selected period on purpose. Consent is a state, not an
+event: "who may we message, and how do we know" is only ever answerable as of now.
+
+Four things are true of every export:
+
+- **It streams.** Rows are generated lazily, so a 20,000-recipient file costs one row of
+  memory rather than twenty thousand.
+- **It is escaped against spreadsheet formula injection.** Contact names arrive from CSV
+  imports and web forms, and Excel and Sheets execute a cell beginning `=`, `+`, `-` or
+  `@`. Text cells are prefixed so they stay text — including phone numbers, which begin
+  with `+`.
+- **It contains no credential.** Nothing in `dashboard/reports.py` reads a token, and
+  nothing should be added that does.
+- **It is audited.** An export puts personal data on someone's laptop, so it is recorded
+  as `report_exported` in the audit log with the report, the period and the filename.
+
+Times in a file are written in the project's configured timezone, matching what the
+reports page displays, so a figure on screen and a row in the file cannot disagree.
+
+### API endpoints added in Phase 6
+
+```
+GET /api/reports/overview/            headline figures for a period
+GET /api/reports/activity/            message outcomes per day (quiet days included)
+GET /api/reports/campaigns/           campaigns launched in the period, with their rates
+GET /api/reports/failures/            distinct provider errors, most frequent first
+GET /api/reports/consent/             current consent state (takes no period)
+GET /api/monitor/active-campaigns/    campaigns sending right now
+```
+
+Every one takes `?days=N`, or `?start=YYYY-MM-DD&end=YYYY-MM-DD`; the default is the last
+30 days and the cap is 366. A malformed value falls back to the default rather than
+raising — a report page must not fail because someone edited the address bar.
+
+All six are read-only. A report is derived from message and consent state, and the only
+way to change one is to change that state through the endpoints that own it.

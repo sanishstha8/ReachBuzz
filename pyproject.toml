@@ -15,6 +15,9 @@ ignore = [
 "*/tests/*" = ["S105", "S106"]  # hardcoded test passwords are fine
 "config/settings/*" = ["F403", "F405", "S105"]  # test settings hold placeholder, non-secret values
 "conftest.py" = ["S105", "S106"]
+# Demonstration data. The randomness shapes a plausible send history; nothing
+# here is a token, a key or an identifier anyone relies on being unguessable.
+"core/management/commands/seed_demo.py" = ["S311"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["accounts", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "whatsapp"]

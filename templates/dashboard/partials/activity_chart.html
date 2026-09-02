@@ -1,0 +1,102 @@
+{% comment %}
+Stacked column chart of message outcomes over time.
+
+  {% include "dashboard/partials/activity_chart.html" with chart=chart chart_id="reportActivity" %}
+
+Every coordinate comes from dashboard.charts, so this template only iterates.
+Three things here are requirements rather than decoration:
+
+* the legend, because five series must never be told apart by colour alone;
+* the table view, because the lightest step of the ramp sits below 3:1 against
+  the card, so the numbers have to be readable without seeing the colours;
+* the per-column tooltip, which enhances but never gates — everything it shows
+  is in the table below it.
+{% endcomment %}
+
+{% load humanize %}
+
+<figure class="viz mb-0" data-chart>
+  {% if chart.has_data %}
+    <svg class="viz__svg" viewBox="0 0 {{ chart.width }} {{ chart.height }}"
+         preserveAspectRatio="xMidYMid meet" role="img"
+         aria-labelledby="{{ chart_id }}Title {{ chart_id }}Desc">
+      <title id="{{ chart_id }}Title">Messages by outcome, per day</title>
+      <desc id="{{ chart_id }}Desc">{{ chart.summary }}</desc>
+
+      {% for line in chart.grid_lines %}
+        <line class="viz__grid" x1="{{ chart.plot_left }}" y1="{{ line.y|floatformat:2 }}"
+              x2="{{ chart.plot_right }}" y2="{{ line.y|floatformat:2 }}" />
+        <text x="{{ chart.tick_label_x }}" y="{{ line.y|floatformat:2 }}"
+              text-anchor="end" dominant-baseline="middle"
+              class="viz__tick">{{ line.label }}</text>
+      {% endfor %}
+
+      <line class="viz__axis" x1="{{ chart.plot_left }}" y1="{{ chart.plot_bottom }}"
+            x2="{{ chart.plot_right }}" y2="{{ chart.plot_bottom }}" />
+
+      {% for column in chart.columns %}
+        <g class="viz__col" tabindex="0" role="group"
+           aria-label="{{ column.description }}" data-tooltip="{{ column.tooltip_json }}">
+          <rect class="viz__hit" x="{{ column.hit_x|floatformat:2 }}" y="{{ chart.plot_top }}"
+                width="{{ column.hit_width|floatformat:2 }}"
+                height="{{ chart.plot_height }}" />
+          {% for segment in column.segments %}
+            <path d="{{ segment.path }}" fill="{{ segment.colour }}" />
+          {% endfor %}
+        </g>
+        {% if column.show_label %}
+          <text x="{{ column.centre_x|floatformat:2 }}" y="{{ chart.x_label_y }}"
+                text-anchor="middle" class="viz__tick">{{ column.short_label }}</text>
+        {% endif %}
+      {% endfor %}
+    </svg>
+  {% else %}
+    <div class="empty-state py-4">
+      <i class="bi bi-bar-chart" aria-hidden="true"></i>
+      <h3 class="h6">Nothing sent in this period</h3>
+      <p class="text-body-secondary mb-0">
+        The chart appears once a campaign has been launched. It is empty rather
+        than flat because there is no activity to plot, not because the activity was zero.
+      </p>
+    </div>
+  {% endif %}
+
+  <figcaption class="viz__legend">
+    {% for item in chart.legend %}
+      <span class="viz__key">
+        <span class="viz__swatch" style="background: {{ item.colour }}" aria-hidden="true"></span>
+        {{ item.label }}
+        <span class="viz__key-value">{{ item.total|intcomma }}</span>
+      </span>
+    {% endfor %}
+  </figcaption>
+</figure>
+
+{% if chart.has_data %}
+  <details class="viz__table">
+    <summary>Show the numbers</summary>
+    <div class="table-responsive mt-2">
+      <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">Messages by outcome for each column of the chart</caption>
+        <thead>
+          <tr>
+            <th scope="col">Period</th>
+            {% for item in chart.legend %}<th scope="col" class="text-end">{{ item.label }}</th>{% endfor %}
+            <th scope="col" class="text-end">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for column in chart.columns %}
+            <tr>
+              <th scope="row" class="fw-normal text-nowrap">{{ column.label }}</th>
+              {% for value in column.table_cells %}
+                <td class="text-end tabular">{{ value|intcomma }}</td>
+              {% endfor %}
+              <td class="text-end tabular fw-semibold">{{ column.total|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+{% endif %}

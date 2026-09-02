@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 from core.exceptions import ProviderNotConfigured, ValidationFailed
 from whatsapp.models import VARIABLE_PATTERN, MessageTemplate
@@ -104,18 +105,86 @@ def validate_template_text(body_text: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def sync_templates_from_provider(*, user=None) -> int:
+@transaction.atomic
+def sync_templates_from_provider(*, user=None, request=None) -> int:
     """
-    Pull the approved template list from the configured provider.
+    Mirror the provider's template registry into our own.
 
-    Implemented in Phase 5 for the mock provider and Phase 7 against the Meta
-    Cloud API, using Meta's documented endpoint at that time. Raising here is
-    deliberate: silently returning zero would look like "you have no
-    templates" rather than "this is not wired up yet".
+    This is the one place the application is allowed to write a template's
+    approval status, and it writes only what Meta reports. Nothing here can
+    decide a template is approved, and nothing submits one for review —
+    approval is Meta's to grant, in WhatsApp Manager.
+
+    A simulated provider is refused rather than synced. The mock has no
+    upstream registry, so a sync would return zero, and "0 templates synced"
+    reads as *you have none* rather than *there was nothing to ask*.
     """
-    provider = getattr(settings, "WHATSAPP_PROVIDER", "mock")
-    raise ProviderNotConfigured(
-        f"Template sync is not available for the '{provider}' provider yet. "
-        "It is implemented alongside the provider integration; until then, create "
-        "local templates for development."
+    from core.audit import record_audit
+    from core.models import AuditAction
+    from whatsapp.services.factory import get_provider, is_simulated, provider_name
+
+    if is_simulated():
+        raise ProviderNotConfigured(
+            f"Template sync is not available for the '{provider_name()}' provider. "
+            "The mock has no upstream registry; create local templates for development, "
+            "or set WHATSAPP_PROVIDER=meta with credentials to sync real ones."
+        )
+
+    fetched = get_provider().fetch_templates()
+    synced = 0
+
+    for data in fetched:
+        if not data.name:
+            logger.warning("Skipping a template with no name in the provider response.")
+            continue
+        _apply_template(data, user=user)
+        synced += 1
+
+    record_audit(
+        AuditAction.TEMPLATES_SYNCED,
+        user=user,
+        request=request,
+        description=f"Synced {synced} template(s) from the provider",
+        metadata={"count": synced, "provider": provider_name()},
     )
+    logger.info("Synced %d template(s) from the provider.", synced)
+    return synced
+
+
+def _apply_template(data, *, user=None) -> MessageTemplate:
+    """
+    Create or update the local mirror of one provider template.
+
+    Matched on (name, language), which is the pair Meta itself treats as
+    identifying — and the pair our own unique constraint is built on.
+
+    A local development template that collides with a real one is converted
+    rather than skipped: once Meta has a template by that name, Meta's version
+    is the truth, and leaving a local stub shadowing it would let someone send
+    a draft believing it was approved.
+    """
+    from whatsapp.models import TemplateSource, extract_variables
+
+    body = data.body_text or ""
+    defaults = {
+        "category": data.category or "utility",
+        "source": TemplateSource.SYNCED,
+        "status": data.status,
+        "body_text": body,
+        "header_text": data.header_text or "",
+        "footer_text": data.footer_text or "",
+        "variables": extract_variables(body),
+        "provider_template_id": data.provider_template_id or "",
+        "rejection_reason": data.rejection_reason or "",
+        "synced_at": timezone.now(),
+    }
+
+    template, created = MessageTemplate.objects.update_or_create(
+        name=data.name,
+        language=data.language or "",
+        defaults=defaults,
+    )
+    if created and user is not None:
+        MessageTemplate.objects.filter(pk=template.pk).update(created_by=user)
+
+    return template

@@ -15,6 +15,8 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from whatsapp.webhooks import MetaWebhookView
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     # --- HTML pages --------------------------------------------------------
@@ -23,6 +25,10 @@ urlpatterns = [
     path("contacts/", include("contacts.urls", namespace="contacts")),
     path("campaigns/", include("campaigns.urls", namespace="campaigns")),
     path("templates/", include("whatsapp.urls", namespace="whatsapp")),
+    # --- Inbound webhooks --------------------------------------------------
+    # Unauthenticated and CSRF-exempt by necessity: Meta calls it. The HMAC
+    # signature over the raw body is what authenticates the request.
+    path("api/whatsapp/webhook/", MetaWebhookView.as_view(), name="whatsapp-webhook"),
     # --- REST API ----------------------------------------------------------
     path("api/auth/", include("accounts.api_urls", namespace="accounts-api")),
     path("api/", include("contacts.api_urls", namespace="contacts-api")),

@@ -215,3 +215,32 @@ def _no_dispatcher_by_default():
     dispatch.clear_dispatcher()
     yield
     dispatch.clear_dispatcher()
+
+
+# ---------------------------------------------------------------------------
+# The network
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def http():
+    """
+    No test may reach the network. Every outbound HTTP call must be declared.
+
+    The project's rule is that the suite passes without Meta credentials and
+    without a network, and once a provider makes real HTTP calls that rule
+    stops enforcing itself: a test that forgot to stub a request would quietly
+    contact Meta, pass or fail on someone's connection, and leak whatever
+    token happened to be in the environment.
+
+    Unregistered requests raise instead. Tests that expect a call register it::
+
+        def test_send(http):
+            http.add(responses.POST, url, json={...}, status=200)
+
+    This covers ``requests``, which is the only HTTP client in the project.
+    """
+    import responses
+
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        yield mock

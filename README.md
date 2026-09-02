@@ -40,6 +40,7 @@ Business Platform Cloud API**.
 19. [Campaigns and templates](#19-campaigns-and-templates)
 20. [Sending pipeline](#20-sending-pipeline)
 21. [Dashboard, monitoring and reports](#21-dashboard-monitoring-and-reports)
+22. [Meta Cloud API integration](#22-meta-cloud-api-integration)
 
 ---
 
@@ -354,8 +355,7 @@ The test suite forces the mock provider, so **tests never require real credentia
 
 ## 13. Meta API integration setup
 
-*Implemented in Phase 7 against Meta's official documentation at implementation time. No
-endpoint or payload is guessed.* Preparation on Meta's side:
+Implemented against Meta's official documentation. Preparation on Meta's side:
 
 1. Create a Meta app of type **Business** and add the **WhatsApp** product.
 2. Connect a WhatsApp Business Account (WABA) and a phone number, and complete business
@@ -374,17 +374,39 @@ send fail at the API.
 
 ## 14. Webhook setup
 
-*Implemented in Phase 7.*
-
 1. Expose your development server publicly (for example with an HTTPS tunnel).
 2. In the Meta app dashboard → WhatsApp → Configuration, set the callback URL to
    `https://<your-host>/api/whatsapp/webhook/` and the verify token to the value of
    `META_WEBHOOK_VERIFY_TOKEN`.
 3. Subscribe to the `messages` field.
 
-The endpoint answers Meta's `GET` verification handshake, validates the
-`X-Hub-Signature-256` HMAC on every `POST` using `META_APP_SECRET`, deduplicates events,
-returns `200` immediately, and processes the payload in a background task.
+`GET` answers Meta's verification handshake, echoing `hub.challenge` verbatim as plain
+text when `hub.verify_token` matches. `POST` validates the `X-Hub-Signature-256` HMAC over
+the **raw request body** using `META_APP_SECRET`, stores the payload, returns `200`, and
+processes it in a background task on the `whatsapp_webhook` queue.
+
+This is the only unauthenticated, CSRF-exempt route in the application, and everything
+about it follows from that:
+
+- **The signature is the authentication.** Nothing is parsed, stored or queued until the
+  HMAC verifies. An unverified body is not persisted at all — the endpoint is public, so
+  anything that writes on unverified input is a way for a stranger to fill the database.
+- **The hash is over the raw bytes.** Re-serialising the parsed JSON changes whitespace
+  and key order and would never match, which is why the view verifies before it parses.
+- **It answers 200 fast.** Meta retries a non-200 with decreasing frequency for up to
+  seven days, so an endpoint that does its work inline turns one slow query into a week
+  of duplicate deliveries.
+- **200 is not a claim the payload was understood** — only that it arrived intact and is
+  stored. Processing failures are recorded on the event, because asking Meta to redeliver
+  would not fix a bug on our side. A periodic sweep retries anything left unprocessed.
+
+Redelivery is safe rather than merely tolerated: `apply_status_update()` is idempotent (a
+repeated event is recorded once) and monotonic (a late `sent` arriving after `read` is
+logged but never drags the message backwards). Meta makes no ordering promise, so both
+properties are load-bearing.
+
+Raw payloads are kept as `WebhookEvent` rows and visible in the Django admin, read-only,
+with a reprocess action. The event is evidence; our reading of it is not.
 
 ## 15. Testing
 
@@ -437,8 +459,8 @@ DATABASE_URL=postgres://user:pass@localhost:5432/wbm_test pytest
 | 4 | Templates, campaigns, message records | ✅ Complete |
 | 5 | Celery, Redis, queue, mock provider | ✅ Complete |
 | 6 | Dashboard, campaign monitoring, reports | ✅ Complete |
-| 7 | Meta Cloud API integration, webhooks | ⏳ Next |
-| 8 | Testing, security review, optimization, documentation | ⏳ Planned |
+| 7 | Meta Cloud API integration, webhooks | ✅ Complete |
+| 8 | Testing, security review, optimization, documentation | ⏳ Next |
 
 Navigation items for modules that have not shipped yet are visible but disabled, and the
 dashboard shows an em dash rather than a fabricated number for statistics it cannot yet
@@ -609,7 +631,7 @@ GET    /api/campaigns/{id}/messages/         recipient-level status
 GET    /api/templates/                       ?usable=true filters by provider
 POST   /api/templates/                       local template (administrators, mock only)
 POST   /api/templates/{id}/render/           safe preview with supplied values
-POST   /api/templates/sync/                  pull from provider (Phase 7)
+POST   /api/templates/sync/                  pull from provider (administrators only)
 GET    /api/messages/  ·  /api/messages/{id}/  ·  /api/messages/stats/
 ```
 
@@ -706,7 +728,7 @@ celery -A config beat -l info
 | Queue | Work |
 |---|---|
 | `whatsapp_send` | per-recipient sends, campaign dispatch, simulated callbacks |
-| `whatsapp_webhook` | inbound Meta status callbacks (Phase 7) |
+| `whatsapp_webhook` | inbound Meta status callbacks and the pending-event sweep |
 | `default` | scheduled-campaign sweep |
 
 Separate queues so a burst of outbound sends never delays inbound status processing.
@@ -817,3 +839,97 @@ raising — a report page must not fail because someone edited the address bar.
 
 All six are read-only. A report is derived from message and consent state, and the only
 way to change one is to change that state through the endpoints that own it.
+
+---
+
+## 22. Meta Cloud API integration
+
+Selecting the provider is one environment variable — `WHATSAPP_PROVIDER=meta` — and no
+application code changes. What follows is what that switch turns on.
+
+### Retryability is decided by Meta's error code, not the HTTP status
+
+Meta's own guidance is to build error handling around the `code` and `details` properties
+rather than message titles or HTTP status codes, and the two genuinely disagree: a
+throughput limit and a permanently dead number both arrive as an HTTP 400. One frozen set
+in `whatsapp/services/meta_cloud_api.py` is the whole policy.
+
+| Treated as | Codes |
+|---|---|
+| Retryable | `4`, `80007`, `130429`, `131000`, `131016`, `131056`, `133004`, `133016`, `2494100`, plus timeouts, connection failures and a 5xx with no code |
+| Permanent | everything else — `100`, `190`, `368`, `131026`, `131047`, `131051`, `132000`, `133010`, … |
+
+Two codes are deliberately **not** retried despite looking transient. Meta documents that
+retrying `131049` and `131048` "artificially lowers your perceived delivery rate, as the
+same per-user limit may still be in effect" — so a retry costs the metric and changes
+nothing. Backing off is also the only reading consistent with the rule that the rate
+limiter throttles us and never pushes against a limit.
+
+A `200` carrying no `wamid` is treated as a *retryable failure*, not a success: without an
+id no webhook can ever be matched back to that message, so recording it as sent would
+strand it permanently at "sent".
+
+### Template sync mirrors Meta and decides nothing
+
+`POST /api/templates/sync/` (administrators only) pulls
+`GET /{waba-id}/message_templates`, following Meta's cursor paging, and writes what Meta
+reports. This is the only place in the application that writes an approval status, and all
+it may do is copy one. Nothing submits a template for review, and nothing marks one
+approved on Meta's behalf.
+
+An approval state we do not recognise becomes `disabled`, never anything usable — Meta
+adds states over time, and the safe reading of an unfamiliar one is "do not send with
+this". A local development template that collides with a real one is converted to the
+synced version rather than skipped: once Meta has a template by that name, Meta's is the
+truth, and leaving a local stub shadowing it would let someone send a draft believing it
+had been approved.
+
+### Inbound STOP
+
+An inbound message whose entire text is a stop keyword (`stop`, `unsubscribe`, `cancel`,
+`quit`, `end`, `opt out`, …) opts the sender out through
+`contacts.services.set_consent()`, so the withdrawal is timestamped, sourced
+`inbound_stop` and audited exactly like one an operator makes by hand.
+
+The match is against the **whole message**, never a search inside it. "Please don't stop
+sending these" must not opt somebody out, and a false positive here silently ends a
+conversation the customer wanted.
+
+**"START" does not opt anyone back in.** Consent is never inferred, and a keyword is a
+weaker basis than this system is willing to record as consent. Opting back in stays a
+deliberate act by an operator, with a source and an audit entry behind it.
+
+### Campaign completion versus message delivery
+
+These are two lifecycles and it is worth not confusing them. A **campaign** is complete
+once nothing is still in flight — our sending work is finished, and every message has been
+handed to Meta. A **message** keeps moving afterwards, as Meta reports what happened to it.
+That is why delivery rate on the reports page is measured against messages the provider
+accepted rather than against campaign status.
+
+### Testing it without credentials
+
+The whole integration is covered with stubbed HTTP, and the suite blocks the network
+outright: an autouse fixture in `conftest.py` intercepts `requests` and makes an
+unregistered call an error rather than a phone call to Meta. That is what keeps the
+project's rule — the suite passes with no credentials and no network — true now that a
+provider makes real HTTP calls, instead of merely being true by accident.
+
+```python
+def test_send(http):
+    http.add(responses.POST, MESSAGES_URL, json={...}, status=200)
+```
+
+### Verifying against the real API
+
+Everything above is exercised against recorded responses. Before trusting it with a live
+WABA, walk through this once:
+
+1. `python manage.py pipeline_status` — provider `meta`, dispatcher registered, broker reachable.
+2. `POST /api/templates/sync/` as an administrator — your approved templates appear with
+   status `approved`, and their variables are extracted.
+3. Send a one-recipient campaign to your own number, and confirm it arrives.
+4. Check the campaign page shows `sent`, then `delivered`, then `read` as the webhooks land.
+5. Reply `STOP` from that number, and confirm the contact shows as opted out with source
+   "Recipient replied STOP" and an audit entry.
+6. Confirm no credential appears anywhere in the worker log.

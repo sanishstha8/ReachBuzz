@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from whatsapp.models import MessageTemplate
+from whatsapp.models import MessageTemplate, WebhookEvent
 
 
 @admin.register(MessageTemplate)
@@ -24,3 +24,44 @@ class MessageTemplateAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(WebhookEvent)
+class WebhookEventAdmin(admin.ModelAdmin):
+    """
+    Read-only: an event is evidence of what Meta sent, and editing evidence
+    defeats the point of keeping it. Reprocessing is the supported action.
+    """
+
+    list_display = ("created_at", "status", "status_count", "message_count", "processed_at")
+    list_filter = ("status", "signature_valid")
+    search_fields = ("error_message",)
+    readonly_fields = (
+        "payload",
+        "signature_valid",
+        "status",
+        "status_count",
+        "message_count",
+        "processed_at",
+        "error_message",
+        "created_at",
+        "updated_at",
+    )
+    actions = ("reprocess",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    @admin.action(description="Reprocess the selected events")
+    def reprocess(self, request, queryset) -> None:
+        """
+        Re-run processing for events that failed on our side.
+
+        Safe to use on anything: applying a status update twice is a no-op, so
+        a needless reprocess costs a query rather than a duplicate message.
+        """
+        from whatsapp.tasks import process_webhook_event_task
+
+        for event in queryset:
+            process_webhook_event_task.delay(str(event.pk))
+        self.message_user(request, f"Queued {queryset.count()} event(s) for reprocessing.")

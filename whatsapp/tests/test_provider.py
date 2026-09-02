@@ -123,7 +123,7 @@ class TestMockProvider:
 
 
 class TestMetaProviderGuards:
-    """Phase 7 implements this; until then it must fail honestly, not silently."""
+    """Configuration must fail by name, and never by leaking a credential."""
 
     @override_settings(META_API_VERSION="", META_ACCESS_TOKEN="", META_PHONE_NUMBER_ID="")
     def test_missing_configuration_is_reported_by_name(self) -> None:
@@ -151,20 +151,19 @@ class TestMetaProviderGuards:
         META_API_VERSION="vTEST",
         META_ACCESS_TOKEN="configured-for-this-test",
         META_PHONE_NUMBER_ID="123",
-    )
-    def test_sending_raises_rather_than_guessing_at_the_api(self) -> None:
-        with pytest.raises(NotImplementedError, match="Phase 7"):
-            MetaWhatsAppProvider().send_text(to="+9779800000000", body="hi")
-
-    @override_settings(
-        META_API_VERSION="vTEST",
-        META_ACCESS_TOKEN="configured-for-this-test",
-        META_PHONE_NUMBER_ID="123",
         META_WABA_ID="456",
     )
-    def test_template_sync_raises(self) -> None:
-        with pytest.raises(NotImplementedError):
-            MetaWhatsAppProvider().fetch_templates()
+    def test_template_sync_needs_more_than_the_send_credentials(self, http) -> None:
+        """The WABA id is only needed for templates, so it is checked separately."""
+        import responses
+
+        http.add(
+            responses.GET,
+            "https://graph.facebook.com/vTEST/456/message_templates",
+            json={"data": []},
+            status=200,
+        )
+        assert MetaWhatsAppProvider().fetch_templates() == []
 
     @override_settings(
         META_API_VERSION="vTEST",

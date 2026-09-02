@@ -396,3 +396,93 @@ def run_due_campaigns_task() -> int:
             logger.info("Scheduled campaign %s launched", campaign.pk)
 
     return launched
+
+
+# ---------------------------------------------------------------------------
+# Inbound webhooks
+# ---------------------------------------------------------------------------
+
+
+@shared_task(name="whatsapp.tasks.process_webhook_event", ignore_result=True)
+def process_webhook_event_task(event_id: str) -> str:
+    """
+    Interpret one stored webhook delivery.
+
+    The endpoint has already answered 200, so nothing here can ask Meta to try
+    again — which is the point. A failure is recorded on the event and left for
+    the sweep, rather than being signalled upstream where it would earn a week
+    of duplicate deliveries for a bug on our side.
+    """
+    from whatsapp.models import WebhookEvent, WebhookEventStatus
+    from whatsapp.services.inbound import process_event
+
+    event = WebhookEvent.objects.filter(pk=event_id).first()
+    if event is None:
+        logger.warning("process_webhook_event: event %s no longer exists", event_id)
+        return "missing"
+
+    if event.status == WebhookEventStatus.PROCESSED:
+        # Meta redelivers, and so does our own sweep. Both are expected.
+        return "already-processed"
+
+    try:
+        result = process_event(event)
+    except Exception as exc:
+        logger.exception("process_webhook_event: %s could not be processed", event_id)
+        event.status = WebhookEventStatus.FAILED
+        event.error_message = f"{exc.__class__.__name__}: {exc}"[:255]
+        event.save(update_fields=["status", "error_message", "updated_at"])
+        return "failed"
+
+    event.status = WebhookEventStatus.PROCESSED
+    event.processed_at = timezone.now()
+    event.status_count = result.total_statuses
+    event.message_count = result.messages_received
+    event.error_message = ""
+    event.save(
+        update_fields=[
+            "status",
+            "processed_at",
+            "status_count",
+            "message_count",
+            "error_message",
+            "updated_at",
+        ]
+    )
+
+    logger.info(
+        "process_webhook_event: %s applied %d status(es), %d unmatched, %d inbound, %d opt-out(s)",
+        event_id,
+        result.statuses_applied,
+        result.statuses_unmatched,
+        result.messages_received,
+        result.opt_outs,
+    )
+    return "processed"
+
+
+@shared_task(name="whatsapp.tasks.process_pending_webhooks", ignore_result=True)
+def process_pending_webhooks_task(limit: int = 100) -> int:
+    """
+    Pick up webhook events that were stored but never processed.
+
+    The endpoint deliberately answers 200 once the payload is safely stored,
+    even if queueing the follow-up task failed — so something has to notice
+    those later. Without this sweep, a broker blip between the write and the
+    enqueue would strand a delivery report silently and a campaign would sit at
+    "processing" forever.
+    """
+    from whatsapp.models import WebhookEvent, WebhookEventStatus
+
+    pending = list(
+        WebhookEvent.objects.filter(status=WebhookEventStatus.RECEIVED)
+        .order_by("created_at")
+        .values_list("id", flat=True)[:limit]
+    )
+
+    for event_id in pending:
+        process_webhook_event_task.delay(str(event_id))
+
+    if pending:
+        logger.info("process_pending_webhooks: requeued %d event(s)", len(pending))
+    return len(pending)

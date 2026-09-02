@@ -336,6 +336,58 @@ class TestCampaignDetail:
 
         assert "Not a WhatsApp user" in body
 
+    def test_groups_failures_by_the_provider_error(
+        self, auth_client: Client, ready_campaign, recording_dispatcher
+    ) -> None:
+        """
+        The per-recipient list cannot show whether this is one bad number or
+        something systemic; the grouped breakdown is what answers that.
+        """
+        launch_campaign(ready_campaign)
+        Message.objects.update(
+            status=MessageStatus.FAILED,
+            error_code="131026",
+            error_message="Message undeliverable",
+        )
+
+        response = auth_client.get(reverse("campaigns:detail", args=[ready_campaign.pk]))
+
+        reasons = response.context["failure_reasons"]
+        assert [(r.error_code, r.count) for r in reasons] == [("131026", 3)]
+        assert "Failure reasons" in response.content.decode()
+
+    def test_a_campaign_with_no_failures_shows_no_breakdown(
+        self, auth_client: Client, ready_campaign, recording_dispatcher
+    ) -> None:
+        launch_campaign(ready_campaign)
+
+        body = auth_client.get(
+            reverse("campaigns:detail", args=[ready_campaign.pk])
+        ).content.decode()
+
+        assert "Failure reasons" not in body
+
+    def test_recipients_can_be_exported(
+        self, auth_client: Client, ready_campaign, recording_dispatcher
+    ) -> None:
+        launch_campaign(ready_campaign)
+
+        body = auth_client.get(
+            reverse("campaigns:detail", args=[ready_campaign.pk])
+        ).content.decode()
+
+        assert reverse("dashboard:campaign-recipients-report", args=[ready_campaign.pk]) in body
+
+    def test_a_campaign_with_no_recipients_offers_no_export(
+        self, auth_client: Client, ready_campaign
+    ) -> None:
+        """There is nothing to export from a plan that has not been sent."""
+        body = auth_client.get(
+            reverse("campaigns:detail", args=[ready_campaign.pk])
+        ).content.decode()
+
+        assert reverse("dashboard:campaign-recipients-report", args=[ready_campaign.pk]) not in body
+
     def test_pause_and_resume_buttons_follow_the_state_machine(
         self, auth_client: Client, ready_campaign, recording_dispatcher
     ) -> None:

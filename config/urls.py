@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/", include("whatsapp.api_urls", namespace="whatsapp-api")),
     path("api/", include("campaigns.api_urls", namespace="campaigns-api")),
     path("api/", include("messaging.api_urls", namespace="messaging-api")),
+    path("api/", include("dashboard.api_urls", namespace="dashboard-api")),
     # --- API documentation -------------------------------------------------
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path(

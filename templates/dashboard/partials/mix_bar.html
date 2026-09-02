@@ -1,0 +1,18 @@
+{% comment %}
+The outcome mix for one campaign, as a thin proportion bar.
+
+  {% include "dashboard/partials/mix_bar.html" with proportions=row.proportions %}
+
+Colour alone never carries this: the row it sits in shows the same numbers as
+text, and the title attribute spells the mix out for a pointer.
+{% endcomment %}
+{% if proportions %}
+  <span class="mix-bar" role="img" aria-label="{% for part in proportions %}{{ part.label }} {{ part.percent }}%{% if not forloop.last %}, {% endif %}{% endfor %}">
+    {% for part in proportions %}
+      <span class="mix-bar__segment" style="width: {{ part.percent }}%; background: {{ part.colour }}"
+            title="{{ part.label }}: {{ part.value }} ({{ part.percent }}%)"></span>
+    {% endfor %}
+  </span>
+{% else %}
+  <span class="text-body-secondary">&mdash;</span>
+{% endif %}

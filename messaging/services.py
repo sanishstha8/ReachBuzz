@@ -140,6 +140,55 @@ def global_stats() -> dict[str, int]:
     }
 
 
+@dataclass(frozen=True)
+class FailureReason:
+    """A distinct provider error and how often it occurred."""
+
+    error_code: str
+    error_message: str
+    count: int
+    affected_campaigns: int
+
+    @property
+    def label(self) -> str:
+        return self.error_message or self.error_code or "Unknown error"
+
+
+def failure_breakdown(queryset, *, limit: int = 20, per_campaign: bool = False) -> list[FailureReason]:
+    """
+    Group failed messages by the error the provider reported.
+
+    Answers a question the list of failed messages cannot: whether a campaign
+    hit one bad number or something systemic. Lives here rather than in the
+    reporting app because it is a fact about messages, and both the campaign
+    monitoring page and the reports page need the same answer.
+    """
+    aggregates: dict[str, Count] = {"count": Count("id")}
+    if per_campaign:
+        aggregates["affected_campaigns"] = Count("campaign", distinct=True)
+
+    rows = (
+        queryset.filter(status=MessageStatus.FAILED)
+        .values("error_code", "error_message")
+        .annotate(**aggregates)
+        .order_by("-count", "error_code")[:limit]
+    )
+    return [
+        FailureReason(
+            error_code=row["error_code"],
+            error_message=row["error_message"],
+            count=row["count"],
+            affected_campaigns=row.get("affected_campaigns", 1),
+        )
+        for row in rows
+    ]
+
+
+def campaign_failure_reasons(campaign, *, limit: int = 10) -> list[FailureReason]:
+    """The failure breakdown for one campaign's monitoring page."""
+    return failure_breakdown(Message.objects.filter(campaign=campaign), limit=limit)
+
+
 @dataclass
 class StatusUpdate:
     """A status report about one message, from a provider or from ourselves."""

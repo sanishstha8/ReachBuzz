@@ -284,3 +284,86 @@ class TestEventSources:
             message, update(MessageStatus.SENT, source=StatusEventSource.SEND_RESPONSE)
         )
         assert MessageStatusEvent.objects.get().source == StatusEventSource.SEND_RESPONSE
+
+
+class TestFailureBreakdown:
+    """
+    Grouped failures live in messaging because they are a fact about messages:
+    the campaign monitoring page and the reports page both ask for them, and a
+    second implementation is how the two would come to disagree.
+    """
+
+    def test_identical_errors_are_grouped(self, make_campaign, make_contact) -> None:
+        from messaging.services import failure_breakdown
+
+        campaign = make_campaign()
+        for index in range(3):
+            Message.objects.create(
+                campaign=campaign,
+                contact=make_contact(f"Failed {index}"),
+                to_phone_number=f"+97798400000{index:02d}",
+                status=MessageStatus.FAILED,
+                error_code="131026",
+                error_message="Message undeliverable",
+            )
+
+        reasons = failure_breakdown(Message.objects.all())
+
+        assert len(reasons) == 1
+        assert reasons[0].count == 3
+        assert reasons[0].label == "Message undeliverable"
+
+    def test_the_commonest_error_comes_first(self, make_campaign, make_contact) -> None:
+        from messaging.services import failure_breakdown
+
+        campaign = make_campaign()
+        for index, code in enumerate(["470", "131026", "131026"]):
+            Message.objects.create(
+                campaign=campaign,
+                contact=make_contact(f"Failed {index}"),
+                to_phone_number=f"+97798410000{index:02d}",
+                status=MessageStatus.FAILED,
+                error_code=code,
+            )
+
+        assert [r.error_code for r in failure_breakdown(Message.objects.all())] == ["131026", "470"]
+
+    def test_only_failures_are_counted(self, make_campaign, make_contact) -> None:
+        from messaging.services import failure_breakdown
+
+        Message.objects.create(
+            campaign=make_campaign(),
+            contact=make_contact("Delivered"),
+            to_phone_number="+9779842000001",
+            status=MessageStatus.DELIVERED,
+        )
+
+        assert failure_breakdown(Message.objects.all()) == []
+
+    def test_an_error_with_no_code_still_has_a_label(self, make_campaign, make_contact) -> None:
+        from messaging.services import failure_breakdown
+
+        Message.objects.create(
+            campaign=make_campaign(),
+            contact=make_contact("Failed"),
+            to_phone_number="+9779843000001",
+            status=MessageStatus.FAILED,
+        )
+
+        assert failure_breakdown(Message.objects.all())[0].label == "Unknown error"
+
+    def test_campaign_scope_counts_only_that_campaign(self, make_campaign, make_contact) -> None:
+        from messaging.services import campaign_failure_reasons
+
+        wanted = make_campaign("Wanted")
+        other = make_campaign("Other")
+        for index, campaign in enumerate([wanted, other]):
+            Message.objects.create(
+                campaign=campaign,
+                contact=make_contact(f"Failed {index}"),
+                to_phone_number=f"+97798440000{index:02d}",
+                status=MessageStatus.FAILED,
+                error_code="470",
+            )
+
+        assert campaign_failure_reasons(wanted)[0].count == 1

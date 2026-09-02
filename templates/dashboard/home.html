@@ -56,7 +56,78 @@
   {% endif %}
 </div>
 
-<div class="row g-4">
+{% if active_campaigns %}
+  <section class="card app-card mb-4" aria-labelledby="activeHeading" id="activeSends">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h2 id="activeHeading" class="h6 mb-0">
+        <span class="spinner-border spinner-border-sm me-2 align-middle" aria-hidden="true"></span>
+        Sending now
+      </h2>
+      <span class="small text-body-secondary" id="activeUpdated"></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <caption class="visually-hidden">Campaigns currently sending or paused</caption>
+        <thead>
+          <tr>
+            <th scope="col">Campaign</th>
+            <th scope="col" style="min-width: 10rem">Progress</th>
+            {% comment %}
+            Every outcome has a column, so the row adds up to the recipient
+            count. Dropping "read" would leave a reader silently short.
+            {% endcomment %}
+            <th scope="col" class="text-end">Sent</th>
+            <th scope="col" class="text-end">Delivered</th>
+            <th scope="col" class="text-end">Read</th>
+            <th scope="col" class="text-end">Failed</th>
+            <th scope="col" class="text-end">Remaining</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in active_campaigns %}
+            <tr data-campaign="{{ entry.row.campaign.pk }}">
+              <th scope="row" class="fw-normal">
+                <a href="{% url 'campaigns:detail' entry.row.campaign.pk %}">{{ entry.row.name }}</a>
+                {% include "campaigns/partials/status_badge.html" with status=entry.row.status label=entry.row.status_label %}
+              </th>
+              <td>
+                <div class="progress" role="progressbar" aria-label="Progress of {{ entry.row.name }}"
+                     aria-valuenow="{{ entry.row.stats.progress_percent }}" aria-valuemin="0" aria-valuemax="100">
+                  <div class="progress-bar bg-success" data-progress
+                       style="width: {{ entry.row.stats.progress_percent }}%"></div>
+                </div>
+                <span class="report-note" data-stat="progress_percent">{{ entry.row.stats.progress_percent }}</span><span class="report-note">% of {{ entry.row.stats.total|intcomma }}</span>
+              </td>
+              <td class="text-end tabular" data-stat="sent">{{ entry.row.stats.sent|intcomma }}</td>
+              <td class="text-end tabular" data-stat="delivered">{{ entry.row.stats.delivered|intcomma }}</td>
+              <td class="text-end tabular" data-stat="read">{{ entry.row.stats.read|intcomma }}</td>
+              <td class="text-end tabular" data-stat="failed">{{ entry.row.stats.failed|intcomma }}</td>
+              <td class="text-end tabular" data-stat="pending">{{ entry.row.stats.in_flight|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+{% comment %}
+The chart spans the row rather than sharing it. The SVG scales to its
+container, so in a narrow column the 10px axis labels would render at about
+7px — and the card would still be as tall as whatever sat beside it, leaving a
+band of dead space under the plot.
+{% endcomment %}
+<section class="card app-card mb-4" aria-labelledby="activityHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="activityHeading" class="h6 mb-0">Last {{ chart_period.days }} days</h2>
+    <a href="{% url 'dashboard:reports' %}" class="small">Reports</a>
+  </div>
+  <div class="card-body">
+    {% include "dashboard/partials/activity_chart.html" %}
+  </div>
+</section>
+
+<div class="row g-4 mb-4">
   <div class="col-12 col-xl-7">
     <section class="card app-card h-100" aria-labelledby="recentHeading">
       <div class="card-header d-flex justify-content-between align-items-center">
@@ -85,21 +156,21 @@
                   <th scope="row" class="fw-normal">
                     <a href="{% url 'campaigns:detail' campaign.pk %}">{{ campaign.name }}</a>
                   </th>
-                  <td class="text-end">
+                  <td class="text-end tabular">
                     {% if campaign.message_count %}
                       {{ campaign.message_count|intcomma }}
                     {% else %}
                       <span class="text-body-secondary">&mdash;</span>
                     {% endif %}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end tabular">
                     {% if campaign.delivered_count %}
                       {{ campaign.delivered_count|intcomma }}
                     {% else %}
                       <span class="text-body-secondary">&mdash;</span>
                     {% endif %}
                   </td>
-                  <td class="text-end">
+                  <td class="text-end tabular">
                     {% if campaign.failed_count %}
                       <span class="text-danger">{{ campaign.failed_count|intcomma }}</span>
                     {% else %}
@@ -201,4 +272,119 @@
   </div>
 </div>
 
+<section class="card app-card" aria-labelledby="failuresHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="failuresHeading" class="h6 mb-0">Recent failures</h2>
+    <a href="{% url 'dashboard:reports' %}" class="small">Breakdown</a>
+  </div>
+
+  {% if recent_failures %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">The most recent messages that failed to send</caption>
+        <thead>
+          <tr>
+            <th scope="col">Recipient</th>
+            <th scope="col">Campaign</th>
+            <th scope="col">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for message in recent_failures %}
+            <tr>
+              <th scope="row" class="fw-normal">
+                <a href="{% url 'contacts:detail' message.contact.pk %}">{{ message.contact.name }}</a>
+              </th>
+              <td class="small">
+                <a href="{% url 'campaigns:detail' message.campaign.pk %}">{{ message.campaign.name }}</a>
+              </td>
+              <td class="small text-danger">
+                {{ message.error_message|default:"—" }}
+                {% if message.error_code %}
+                  <span class="text-body-secondary">({{ message.error_code }})</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-check2-circle" aria-hidden="true"></i>
+        <h3 class="h6">Nothing has failed</h3>
+        <p class="text-body-secondary mb-0">
+          Failed messages appear here with the reason the provider gave, so a bad
+          number can be told apart from a bad connection.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+{% if active_campaigns %}
+<script>
+  // Keep the "Sending now" panel current without reloading the whole page.
+  // Only the numbers are updated in place; if the set of active campaigns
+  // changes — one finishes, or another launches — the panel is no longer the
+  // right shape, so the page is reloaded rather than patched.
+  (function () {
+    const url = "{% url 'dashboard-api:active-campaigns' %}";
+    const keys = ['sent', 'delivered', 'read', 'failed', 'pending'];
+    let failures = 0;
+
+    function rendered() {
+      return Array.from(document.querySelectorAll('#activeSends [data-campaign]'))
+        .map((row) => row.dataset.campaign).sort().join(',');
+    }
+
+    async function refresh() {
+      try {
+        const campaigns = await window.api.get(url);
+        failures = 0;
+
+        if (campaigns.map((c) => c.id).sort().join(',') !== rendered()) {
+          window.location.reload();
+          return;
+        }
+
+        campaigns.forEach(function (campaign) {
+          const row = document.querySelector('[data-campaign="' + campaign.id + '"]');
+          if (!row) { return; }
+
+          keys.forEach(function (key) {
+            const cell = row.querySelector('[data-stat="' + key + '"]');
+            if (cell) { cell.textContent = campaign[key].toLocaleString(); }
+          });
+
+          const percent = row.querySelector('[data-stat="progress_percent"]');
+          if (percent) { percent.textContent = campaign.progress_percent; }
+
+          const bar = row.querySelector('[data-progress]');
+          if (bar) {
+            bar.style.width = campaign.progress_percent + '%';
+            bar.parentElement.setAttribute('aria-valuenow', campaign.progress_percent);
+          }
+        });
+
+        const stamp = document.getElementById('activeUpdated');
+        if (stamp) { stamp.textContent = 'updated ' + new Date().toLocaleTimeString(); }
+      } catch (error) {
+        failures += 1;
+        if (failures >= 3) {
+          window.toast('Live updates stopped. Reload the page to see current progress.', 'warning');
+          return;
+        }
+      }
+      window.setTimeout(refresh, 10000);
+    }
+
+    window.setTimeout(refresh, 10000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

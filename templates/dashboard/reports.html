@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    {{ period.label }} &middot; {{ period.days }} day{{ period.days|pluralize }}
+  </p>
+{% endblock %}
+
+{% block content %}
+
+{% comment %}
+One filter row, above everything it scopes. Every tile, the chart, both tables
+and the downloads describe the same slice, so no two numbers on this page can
+be measuring different windows. The consent panel is the one exception and
+says so on its face.
+{% endcomment %}
+<form method="get" class="report-filters mb-4" role="search" aria-label="Report period">
+  <div class="report-filters__presets" role="group" aria-label="Preset periods">
+    {% for days, label in period_presets %}
+      <a class="btn btn-sm {% if selected_preset == days %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         href="?days={{ days }}" {% if selected_preset == days %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </div>
+
+  <div>
+    <label for="reportStart" class="form-label small mb-1">From</label>
+    <input type="date" class="form-control form-control-sm" id="reportStart" name="start"
+           value="{{ period.start|date:'Y-m-d' }}">
+  </div>
+  <div>
+    <label for="reportEnd" class="form-label small mb-1">To</label>
+    <input type="date" class="form-control form-control-sm" id="reportEnd" name="end"
+           value="{{ period.end|date:'Y-m-d' }}">
+  </div>
+  <button type="submit" class="btn btn-sm btn-outline-primary">Apply</button>
+
+  <p class="report-note mb-0 ms-auto">
+    Times are shown in {{ time_zone }}. A message is counted on the day it was created,
+    which is the day its campaign was launched.
+  </p>
+</form>
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">In this period</h2>
+<div class="row g-3 mb-4">
+  {% include "dashboard/partials/stat_card.html" with label="Messages" value=overview.messages|intcomma icon="chat-dots" hint="created" %}
+  {% include "dashboard/partials/stat_card.html" with label="Delivered" value=overview.confirmed_delivered|intcomma icon="check2-all" hint="reached a handset" %}
+  {% include "dashboard/partials/stat_card.html" with label="Failed" value=overview.failed|intcomma icon="exclamation-triangle" hint="see the breakdown below" %}
+  {% include "dashboard/partials/stat_card.html" with label="Delivery rate" value=overview.delivery_rate|stringformat:"s"|add:"%" icon="graph-up" hint="of messages the provider accepted" %}
+  {% include "dashboard/partials/stat_card.html" with label="Read rate" value=overview.read_rate|stringformat:"s"|add:"%" icon="eye" hint="of delivered messages" %}
+  {% include "dashboard/partials/stat_card.html" with label="Campaigns" value=overview.campaigns_launched|intcomma icon="megaphone" hint="launched" %}
+  {% include "dashboard/partials/stat_card.html" with label="Contacts added" value=overview.contacts_added|intcomma icon="person-plus" hint="new records" %}
+  {% include "dashboard/partials/stat_card.html" with label="Consent change" value=overview.net_consent_change|intcomma icon="clipboard-check" hint="opt-ins minus opt-outs" %}
+</div>
+
+<section class="card app-card mb-4" aria-labelledby="activityHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="activityHeading" class="h6 mb-0">Message activity</h2>
+    <span class="small text-body-secondary">{{ overview.messages|intcomma }} message{{ overview.messages|pluralize }}</span>
+  </div>
+  <div class="card-body">
+    {% include "dashboard/partials/activity_chart.html" %}
+  </div>
+</section>
+
+<section class="card app-card mb-4" aria-labelledby="performanceHeading">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <h2 id="performanceHeading" class="h6 mb-0">Campaign performance</h2>
+    <a class="small" href="{% url 'dashboard:report-download' report='campaigns' %}?{{ period_query }}">
+      Download CSV
+    </a>
+  </div>
+
+  {% if campaign_rows %}
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <caption class="visually-hidden">Campaigns launched in this period and how their sends turned out</caption>
+        <thead>
+          <tr>
+            <th scope="col">Campaign</th>
+            <th scope="col">Launched</th>
+            <th scope="col">Mix</th>
+            <th scope="col" class="text-end">Recipients</th>
+            <th scope="col" class="text-end">Delivered</th>
+            <th scope="col" class="text-end">Failed</th>
+            <th scope="col" class="text-end">Delivery rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in campaign_rows %}
+            <tr>
+              <th scope="row" class="fw-normal">
+                <a href="{% url 'campaigns:detail' entry.row.campaign.pk %}">{{ entry.row.name }}</a>
+                {% include "campaigns/partials/status_badge.html" with status=entry.row.status label=entry.row.status_label %}
+              </th>
+              <td class="small text-nowrap">{{ entry.row.campaign.started_at|date:"j M Y, H:i" }}</td>
+              <td style="min-width: 6rem">
+                {% include "dashboard/partials/mix_bar.html" with proportions=entry.proportions %}
+              </td>
+              <td class="text-end tabular">{{ entry.row.stats.total|intcomma }}</td>
+              <td class="text-end tabular">{{ entry.row.stats.delivered|add:entry.row.stats.read|intcomma }}</td>
+              <td class="text-end tabular">
+                {% if entry.row.stats.failed %}
+                  <span class="text-danger">{{ entry.row.stats.failed|intcomma }}</span>
+                {% else %}
+                  <span class="text-body-secondary">&mdash;</span>
+                {% endif %}
+              </td>
+              <td class="text-end tabular">
+                {% if entry.row.stats.reached %}
+                  {{ entry.row.stats.delivery_rate }}%
+                {% else %}
+                  <span class="text-body-secondary" title="Nothing has been accepted by the provider yet">&mdash;</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="card-body">
+      <div class="empty-state">
+        <i class="bi bi-megaphone" aria-hidden="true"></i>
+        <h3 class="h6">No campaigns were launched in this period</h3>
+        <p class="text-body-secondary mb-0">
+          This table reports on sends that happened. Drafts are absent on purpose:
+          a campaign that was never launched has no performance to report.
+        </p>
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+<div class="row g-4 mb-4">
+  <div class="col-12 col-xl-7">
+    <section class="card app-card h-100" aria-labelledby="failuresHeading">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 id="failuresHeading" class="h6 mb-0">Why messages failed</h2>
+        {% if failure_reasons %}
+          <a class="small" href="{% url 'dashboard:report-download' report='failures' %}?{{ period_query }}">
+            Download CSV
+          </a>
+        {% endif %}
+      </div>
+
+      {% if failure_reasons %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <caption class="visually-hidden">Distinct provider errors in this period</caption>
+            <thead>
+              <tr>
+                <th scope="col">Reason</th>
+                <th scope="col">Code</th>
+                <th scope="col" class="text-end">Messages</th>
+                <th scope="col" class="text-end">Campaigns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for reason in failure_reasons %}
+                <tr>
+                  <th scope="row" class="fw-normal">{{ reason.label }}</th>
+                  <td class="font-monospace small">{{ reason.error_code|default:"—" }}</td>
+                  <td class="text-end tabular">{{ reason.count|intcomma }}</td>
+                  <td class="text-end tabular">{{ reason.affected_campaigns|intcomma }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="card-body">
+          <div class="empty-state">
+            <i class="bi bi-check2-circle" aria-hidden="true"></i>
+            <h3 class="h6">No failures in this period</h3>
+            <p class="text-body-secondary mb-0">
+              Nothing failed between {{ period.start|date:"j M Y" }} and {{ period.end|date:"j M Y" }}.
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <section class="card app-card h-100" aria-labelledby="consentHeading">
+      <div class="card-header">
+        <h2 id="consentHeading" class="h6 mb-0">Consent</h2>
+      </div>
+      <div class="card-body">
+        <p class="report-note">
+          Consent is a state, not an event, so these figures describe the list as it
+          stands now &mdash; not the selected period.
+        </p>
+
+        <dl class="row small mb-3">
+          <dt class="col-8 text-body-secondary">Contacts on file</dt>
+          <dd class="col-4 text-end tabular">{{ consent.total|intcomma }}</dd>
+
+          <dt class="col-8 text-body-secondary">Opted in</dt>
+          <dd class="col-4 text-end tabular">{{ consent.opted_in|intcomma }} ({{ consent.opt_in_rate }}%)</dd>
+
+          <dt class="col-8 text-body-secondary">Can be messaged</dt>
+          <dd class="col-4 text-end tabular">{{ consent.eligible|intcomma }}</dd>
+
+          <dt class="col-8 text-body-secondary">Not opted in</dt>
+          <dd class="col-4 text-end tabular">{{ consent.opted_out|intcomma }}</dd>
+        </dl>
+
+        {% if consent.by_opt_in_source %}
+          <h3 class="h6 text-body-secondary text-uppercase small">How consent was obtained</h3>
+          <ul class="list-unstyled small mb-0">
+            {% for label, count in consent.by_opt_in_source %}
+              <li class="d-flex justify-content-between py-1">
+                <span>{{ label }}</span>
+                <span class="tabular">{{ count|intcomma }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<section class="card app-card" aria-labelledby="downloadsHeading">
+  <div class="card-header">
+    <h2 id="downloadsHeading" class="h6 mb-0">Downloads</h2>
+  </div>
+  <div class="card-body">
+    <p class="report-note">
+      Exports contain contact details and message history, so each download is recorded
+      in the audit log. Files are CSV, comma-separated, UTF-8.
+    </p>
+    <ul class="list-unstyled mb-0">
+      {% for spec in reports %}
+        <li class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 border-bottom">
+          <span>
+            <strong class="d-block">{{ spec.label }}</strong>
+            <span class="report-note">{{ spec.description }}</span>
+          </span>
+          <a class="btn btn-sm btn-outline-secondary"
+             href="{% url 'dashboard:report-download' report=spec.slug %}{% if spec.uses_period %}?{{ period_query }}{% endif %}">
+            <i class="bi bi-download me-1" aria-hidden="true"></i>Download
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+{% endblock %}

@@ -1,21 +1,40 @@
 """
-Dashboard.
+Dashboard, monitoring and reports.
 
 Tiles show real numbers for the modules that have shipped and an em dash for
 those that have not — a fabricated zero reads as "nothing has happened", which
 is a claim the system cannot make about a module that does not exist yet.
 
-Phase 6 adds charts and downloadable reports on top of these figures.
+The three pages here answer three different questions, which is why they are
+three pages and not one: the dashboard answers *what is happening right now*,
+the reports page answers *what happened over a period I choose*, and the CSV
+downloads answer *give me the rows so I can do my own arithmetic*. All of them
+read their figures from ``dashboard.services``, so they cannot disagree.
 """
 
 from __future__ import annotations
 
+import logging
+
 from django.apps import apps
 from django.conf import settings
 from django.db.models import Count, Q
-from django.views.generic import TemplateView
+from django.http import Http404, HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.text import slugify
+from django.views.generic import TemplateView, View
 
+from core.audit import record_audit
 from core.mixins import ActiveUserRequiredMixin, PageTitleMixin
+from core.models import AuditAction
+from dashboard import charts, reports, services
+
+logger = logging.getLogger(__name__)
+
+# The dashboard chart is a glance, not an analysis: two weeks fits the card
+# without crowding, and the reports page is one click away for anything longer.
+DASHBOARD_CHART_DAYS = 14
 
 
 class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
@@ -36,6 +55,19 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
         context["message_stats"] = self._message_stats()
         context["recent_campaigns"] = self._recent_campaigns()
         context["system_status"] = self._system_status()
+
+        period = services.ReportPeriod.last_days(DASHBOARD_CHART_DAYS)
+        activity = services.daily_activity(period)
+        context["chart_period"] = period
+        context["activity"] = activity
+        context["chart"] = charts.stacked_column_chart(activity)
+        context["chart_id"] = "dashboardActivity"
+
+        active = services.active_campaigns()
+        context["active_campaigns"] = [
+            {"row": row, "proportions": charts.stats_proportions(row.stats)} for row in active
+        ]
+        context["recent_failures"] = services.recent_failures(limit=6)
         return context
 
     # -- Statistics ---------------------------------------------------------
@@ -141,3 +173,110 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
             status.update(pipeline_status())
 
         return status
+
+
+class ReportsView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
+    """
+    Everything that happened in a period the reader chooses.
+
+    One filter row scopes the whole page: the tiles, the chart, the campaign
+    table and the failure table all describe the same slice, so two numbers on
+    this page can never be measuring different windows. The consent panel is
+    the deliberate exception, and says so — consent is a state, not an event.
+    """
+
+    template_name = "dashboard/reports.html"
+    page_title = "Reports"
+    active_nav = "reports"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        period = services.resolve_period(self.request.GET)
+        activity = services.daily_activity(period)
+
+        context["period"] = period
+        context["period_presets"] = services.PERIOD_PRESETS
+        context["selected_preset"] = self._selected_preset(period)
+        context["overview"] = services.overview(period)
+        context["activity"] = activity
+        context["chart"] = charts.stacked_column_chart(activity)
+        context["chart_id"] = "reportActivity"
+        context["campaign_rows"] = [
+            {"row": row, "proportions": charts.stats_proportions(row.stats)}
+            for row in services.campaign_performance(period)
+        ]
+        context["failure_reasons"] = services.failure_reasons(period)
+        context["consent"] = services.consent_summary()
+        context["reports"] = list(reports.REPORTS.values())
+        context["time_zone"] = settings.TIME_ZONE
+        # Explicit dates rather than ?days=: a download started from this page
+        # must cover the period the reader was looking at, even if they come
+        # back to the link tomorrow.
+        context["period_query"] = f"start={period.start.isoformat()}&end={period.end.isoformat()}"
+        return context
+
+    @staticmethod
+    def _selected_preset(period: services.ReportPeriod) -> int | None:
+        """Which preset button to mark as current, if the period matches one."""
+        if period.end != timezone.localdate():
+            return None
+        return next((days for days, _ in services.PERIOD_PRESETS if days == period.days), None)
+
+
+class ReportDownloadView(ActiveUserRequiredMixin, View):
+    """
+    Stream one of the catalogued CSV reports.
+
+    The export is audited before the response is returned. Rows are generated
+    lazily, so the audit entry records that the file was requested — which is
+    the fact the compliance trail needs — rather than waiting to find out
+    whether the reader finished downloading it.
+    """
+
+    def get(self, request: HttpRequest, report: str) -> HttpResponse:
+        spec = reports.REPORTS.get(report)
+        if spec is None:
+            raise Http404("No such report.")
+
+        period = services.resolve_period(request.GET)
+        filename = spec.filename(period, prefix=reports.filename_prefix(settings.SITE_NAME))
+
+        record_audit(
+            AuditAction.REPORT_EXPORTED,
+            request=request,
+            description=f"Exported the {spec.label} report",
+            metadata={
+                "report": spec.slug,
+                "period_start": period.start.isoformat() if spec.uses_period else None,
+                "period_end": period.end.isoformat() if spec.uses_period else None,
+                "filename": filename,
+            },
+        )
+        return reports.stream_csv(filename, spec.header, spec.build(period))
+
+
+class CampaignRecipientsReportView(ActiveUserRequiredMixin, View):
+    """The recipient-level export for one campaign, from its monitoring page."""
+
+    def get(self, request: HttpRequest, pk) -> HttpResponse:
+        from campaigns.models import Campaign
+
+        campaign = get_object_or_404(Campaign, pk=pk)
+        prefix = reports.filename_prefix(settings.SITE_NAME)
+        # A campaign may legitimately be named "Q3 / promo #2"; the slug keeps
+        # that out of the Content-Disposition header.
+        name = slugify(campaign.name) or "campaign"
+        filename = f"{prefix}-campaign-{name}-recipients.csv"
+
+        record_audit(
+            AuditAction.REPORT_EXPORTED,
+            request=request,
+            obj=campaign,
+            description=f"Exported the recipients of {campaign.name}",
+            metadata={"report": "campaign-recipients", "filename": filename},
+        )
+        return reports.stream_csv(
+            filename,
+            reports.CAMPAIGN_RECIPIENTS_HEADER,
+            reports.campaign_message_rows(campaign),
+        )

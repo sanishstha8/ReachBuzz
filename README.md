@@ -948,17 +948,41 @@ def test_send(http):
 
 ### Verifying against the real API
 
-Everything above is exercised against recorded responses. Before trusting it with a live
-WABA, walk through this once:
+Everything above is exercised against recorded responses, which proves the code does what
+Meta's documentation says — not that Meta agrees. One command closes that gap:
 
-1. `python manage.py pipeline_status` — provider `meta`, dispatcher registered, broker reachable.
-2. `POST /api/templates/sync/` as an administrator — your approved templates appear with
-   status `approved`, and their variables are extracted.
-3. Send a one-recipient campaign to your own number, and confirm it arrives.
-4. Check the campaign page shows `sent`, then `delivered`, then `read` as the webhooks land.
-5. Reply `STOP` from that number, and confirm the contact shows as opted out with source
-   "Recipient replied STOP" and an audit entry.
-6. Confirm no credential appears anywhere in the worker log.
+```bash
+python manage.py verify_live                        # read-only: nothing leaves the machine
+python manage.py verify_live --sync                 # ...and mirror the templates locally
+python manage.py verify_live --to +9779800000000    # ...and send one real message
+```
+
+| Check | What a failure tells you |
+|---|---|
+| Provider is `meta` | You are pointed at the mock and would only be testing yourself |
+| Credentials | Which `META_*` setting is missing — never what any of them contain |
+| Sending pipeline | No worker, or an unreachable broker: a campaign would strand at `pending` |
+| Templates | The access token is rejected, or nothing on the WABA is approved |
+| Send | With `--to`, a real one-recipient campaign, watched until the webhooks land |
+
+The send goes through the **ordinary campaign path** — the same `launch_campaign` an
+operator's click uses — so what it verifies is what actually runs, rather than a special
+case that only exists in the checker. Reaching `sent` proves the send path; reaching
+`delivered` proves the webhook path too, which is the half that cannot be checked any
+other way because it depends on Meta being able to reach *you*.
+
+**The recipient must be a contact who has consented.** It is resolved through
+`Contact.objects.eligible()` with no override, so verifying with your own number means
+adding yourself as a contact and recording consent first — which is a true statement and
+an audited one. There is deliberately no flag to skip this: a command that took a phone
+number on the command line and messaged it regardless would be a hole in the one rule the
+whole system is built on.
+
+Two things the command cannot check for you, so check them by hand once:
+
+1. Reply `STOP` from that number, and confirm the contact shows as opted out with source
+   "Recipient replied STOP" and an audit entry against it.
+2. Read the worker log and confirm no credential appears in it.
 
 ---
 

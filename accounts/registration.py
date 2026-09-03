@@ -28,6 +28,7 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
+from billing.services import subscribe
 from core.audit import record_audit
 from core.models import AuditAction
 from organizations.models import Organization, OrganizationMember, OrganizationRole
@@ -66,7 +67,7 @@ def register(
     request=None,
 ) -> tuple[object, Organization]:
     """
-    Create an account, its business, and the owner's seat in it.
+    Create an account, its business, the owner's seat in it, and a subscription.
 
     Atomic on purpose: a user with no organization can sign in and see nothing,
     and an organization with no owner cannot be administered at all. Neither
@@ -84,6 +85,13 @@ def register(
     OrganizationMember.objects.create(
         organization=organization, user=user, role=OrganizationRole.OWNER
     )
+
+    # A fourth thing, inside the same transaction. An organization with no
+    # subscription has no limits to check against, and billing.usage has to
+    # guess on its behalf every time it is asked - so the safe moment to create
+    # one is the moment the organization exists, not the first time somebody
+    # notices it is missing.
+    subscribe(organization, user=user, request=request)
 
     record_audit(
         AuditAction.USER_REGISTERED,

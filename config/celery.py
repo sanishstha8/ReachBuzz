@@ -43,6 +43,14 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/5"),
         "options": {"queue": "whatsapp_webhook", "expires": 240},
     },
+    # A monthly message quota is measured from current_period_start, so nothing
+    # resets until the period does. Hourly rather than daily: a customer whose
+    # period ends at 09:00 should not wait until midnight to send again.
+    "roll-billing-periods": {
+        "task": "billing.tasks.roll_billing_periods",
+        "schedule": crontab(minute=5),
+        "options": {"queue": "default", "expires": 3300},
+    },
 }
 
 app.autodiscover_tasks()

@@ -45,6 +45,7 @@ Business Platform Cloud API**.
 24. [The landing page](#24-the-landing-page)
 25. [Organizations and tenant isolation](#25-organizations-and-tenant-isolation)
 26. [Sign-up, email confirmation and password reset](#26-sign-up-email-confirmation-and-password-reset)
+27. [Plans, subscriptions and usage](#27-plans-subscriptions-and-usage)
 
 ---
 
@@ -508,7 +509,7 @@ full suite before the next one starts.
 |---|---|---|
 | 1 | Organizations, membership, tenant isolation | ✅ Complete — [§25](#25-organizations-and-tenant-isolation) |
 | 2 | Registration, email confirmation, password reset | ✅ Complete — [§26](#26-sign-up-email-confirmation-and-password-reset) |
-| 3 | Plans, subscriptions, usage metering | Not started |
+| 3 | Plans, subscriptions, usage metering | ✅ Complete — [§27](#27-plans-subscriptions-and-usage) |
 | 4 | Payments and invoices | Not started |
 | 5 | Per-organization messaging credentials | Not started |
 | 6 | Customer billing dashboard | Not started |
@@ -1114,9 +1115,10 @@ does not have.**
 - **Every link resolves.** The reference design linked to a blog, a help centre and a
   refund policy. None of those exist here, so none of them are linked. A test walks
   every anchor on the page and fails on a 404.
-- **No price is invented.** `PRICING_TIERS` in `pages/views.py` carries `price = None`
-  until someone sets a real figure, and a tier without one renders "Pricing on request".
-  Set the `price` field to publish real numbers; the layout is already built for them.
+- **No price is invented.** Tiers are `Plan` rows since Stage 3, and a plan carries
+  `price = None` until someone sets a real figure — a tier without one renders
+  "Pricing on request". Set the price in the admin to publish real numbers; the layout
+  is already built for them.
 - **The primary call to action is "Get started", and it now leads somewhere.** It read
   "Request access" until Stage 2, because self-service registration did not exist and the
   page may not promise a flow that does not. It points at `accounts:register` now.
@@ -1125,8 +1127,10 @@ does not have.**
 - **`SUPPORT_EMAIL` gates the contact card.** With no address configured the card is
   omitted entirely rather than showing configuration advice to a visitor.
 
-Copy lives as data at the top of `pages/views.py` — features, steps, tiers and FAQ are
-plain dataclasses, so editing the page is editing a list, not hunting through markup.
+Copy lives as data at the top of `pages/views.py` — features, steps and FAQ are plain
+dataclasses, so editing the page is editing a list, not hunting through markup. Tiers
+are the exception: they come from the plan catalogue, so what the page advertises is
+what the system enforces.
 
 ---
 
@@ -1279,3 +1283,106 @@ rather than adding a second mechanism.
 
 No email change flow, no invitations, no second organization per user. Stage 2 is
 the front door only; team management is a later stage.
+
+---
+
+## 27. Plans, subscriptions and usage
+
+Stage 3. The product could be signed up for after Stage 2, but every account got
+everything, forever. This is what a customer is entitled to and how it is counted.
+
+### Three models
+
+| Model | What it is |
+|---|---|
+| `Plan` | A tier: what it costs, and what it permits. Platform-level, not customer-owned — every customer sees one catalogue |
+| `Subscription` | One organization's place on one plan, for one period. `OneToOne`, so two rows cannot disagree about a customer's limits |
+| `UsageSnapshot` | A closed period's totals, frozen. What an invoice will be written against |
+
+### Limits: empty means unlimited, zero means none
+
+They look alike in a database row and behave in opposite ways. A nullable integer
+is the only spelling that expresses both a self-hosted plan and a suspended one
+without a sentinel like `-1` that every call site has to remember.
+
+```python
+plan.allows("max_messages_per_month", current=800, additional=200)   # True
+plan.allows("max_messages_per_month", current=800, additional=201)   # False
+```
+
+The size of the work is passed in on purpose. A campaign to 900 recipients against
+200 remaining is refused **whole**, before anything is written — a send stopped at
+the ceiling leaves the customer billed for a partial delivery they cannot identify.
+
+### Usage is derived, never accumulated
+
+Every figure is a `COUNT` over the rows that actually exist. The tempting
+alternative — a counter incremented on each send — is faster and wrong: it drifts
+on a retry, on a crash between the send and the increment, and on any bulk
+correction. A billing number that quietly disagrees with the message log is the
+worst kind of wrong.
+
+Messages are metered **when sent, not when queued**. A message that never left the
+building cost the customer nothing.
+
+Snapshots exist for the opposite reason. Once a period closes its total must stop
+moving, even though the messages it was derived from are still subject to
+retention. `billing.tasks.roll_billing_periods` runs hourly, is idempotent under a
+unique constraint on `(organization, period_start)`, and catches a long gap up one
+period at a time rather than jumping to now and losing the periods in between.
+
+### Where it is enforced
+
+| Seam | Limit |
+|---|---|
+| `contacts.services.create_contact` | `max_contacts` |
+| `campaigns.services.launch_campaign` | `max_messages_per_month`, plus whether the subscription is entitled at all |
+
+`QuotaExceeded` subclasses the project's existing `ValidationFailed`, so the campaign
+wizard and the REST error handler render it — blockers list and all — without being
+taught anything.
+
+**`PAST_DUE` still sends.** A failed card should start a dunning conversation, not
+sever a business's messaging mid-campaign. A lapsed subscription and a spent quota
+raise different messages, because they need different remedies and collapsing them
+would send half the customers to the wrong page.
+
+### The pricing page is the plan catalogue
+
+The landing page advertised "Up to 1,000 contacts" as a hard-coded string in
+`pages/views.py` while nothing counted contacts. Those tiers are `Plan` rows now and
+the page renders from them, so a promise on the page and a ceiling in `billing.usage`
+can no longer drift apart. A test asserts the advertised number *is* the enforced one.
+
+### What the seed migration decided, and what it refused to
+
+Seeded: the three tiers already on the page, with **the contact limits they already
+advertised** — 1,000, 10,000, unlimited. Enforcing a number this project has been
+publishing is honest.
+
+Not seeded: prices, monthly message caps, team-member caps. A cap that was never
+advertised is a commercial decision, and a migration is not where those get made —
+the same reason `price` stays `NULL` and renders "Pricing on request". The
+enforcement is built and tested; publishing a figure is a number in the admin.
+
+### Existing organizations were not downgraded
+
+The one decision in this stage that could have broken a working system, so it was
+made in the safe direction: the backfill puts every pre-existing organization on
+**Self-hosted**, which has no limits. A business already running this software must
+not discover one morning that it has been retroactively placed on a tier it never
+chose, with a ceiling it never agreed to, halfway through a campaign.
+
+New signups are a different case — they choose by signing up, and
+`billing.services.subscribe()` starts them on the cheapest public plan, trialing.
+
+A missing subscription resolves to the cheapest public plan and logs a warning.
+Unlimited would give the product away to anyone whose signup half-failed; blocked
+would take a working customer offline over a data problem they did not cause.
+
+### Not in this stage
+
+No payment provider, no invoices, no customer-facing billing page, no upgrade
+button. `subscribe()` records an entitlement; it does not charge for one. Keeping
+that seam clean is what lets Stage 4 put a provider behind these calls without
+touching entitlement logic, and Stage 6 build the page that shows it.

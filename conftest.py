@@ -90,6 +90,7 @@ def organization(db, operator):
     OrganizationMember.objects.create(
         organization=org, user=operator, role=OrganizationRole.OWNER
     )
+    _subscribe_unlimited(org)
     return org
 
 
@@ -104,7 +105,76 @@ def other_organization(db, make_user):
         organization=org, user=outsider, role=OrganizationRole.OWNER
     )
     org.outsider = outsider
+    _subscribe_unlimited(org)
     return org
+
+
+def _subscribe_unlimited(organization):
+    """
+    Every test organization has a subscription, because every real one does.
+
+    On the unlimited plan specifically. A test about contacts should fail for a
+    reason to do with contacts, not because it wandered into a quota it never
+    mentioned — and a fixture that quietly imposes a ceiling turns one plan
+    change into a hundred mysterious failures. Tests about limits ask for a
+    limited plan by name; see the `make_plan` and `on_plan` fixtures.
+    """
+    from django.utils import timezone
+
+    from billing.models import Plan, Subscription, SubscriptionStatus, add_months
+
+    plan = Plan.objects.filter(slug="self-hosted").first() or Plan.objects.create(
+        name="Unlimited (test)", slug="unlimited-test", is_public=False
+    )
+    now = timezone.now()
+    Subscription.objects.create(
+        organization=organization,
+        plan=plan,
+        status=SubscriptionStatus.ACTIVE,
+        current_period_start=now,
+        current_period_end=add_months(now, 1),
+    )
+
+
+@pytest.fixture
+def plans(db):
+    """The seeded catalogue, by slug."""
+    from billing.models import Plan
+
+    return {plan.slug: plan for plan in Plan.objects.all()}
+
+
+@pytest.fixture
+def make_plan(db):
+    """A plan with whatever ceilings the test is actually about."""
+    from billing.models import Plan
+
+    def _make(slug="tiny", **limits):
+        defaults = {
+            "name": slug.replace("-", " ").title(),
+            "is_public": False,
+            "max_contacts": None,
+            "max_messages_per_month": None,
+            "max_team_members": None,
+        }
+        return Plan.objects.create(slug=slug, **{**defaults, **limits})
+
+    return _make
+
+
+@pytest.fixture
+def on_plan(db):
+    """Move an organization onto a given plan, keeping its current period."""
+
+    def _switch(organization, plan, **fields):
+        subscription = organization.subscription
+        subscription.plan = plan
+        for name, value in fields.items():
+            setattr(subscription, name, value)
+        subscription.save()
+        return subscription
+
+    return _switch
 
 
 @pytest.fixture

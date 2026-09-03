@@ -67,6 +67,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "core.apps.CoreConfig",
     "organizations.apps.OrganizationsConfig",
+    "billing.apps.BillingConfig",
     "accounts.apps.AccountsConfig",
     "contacts.apps.ContactsConfig",
     "whatsapp.apps.WhatsappConfig",

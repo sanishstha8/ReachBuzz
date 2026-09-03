@@ -51,6 +51,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute=5),
         "options": {"queue": "default", "expires": 3300},
     },
+    # Daily, not hourly. Retrying a declined card every hour annoys the customer
+    # and, on some networks, counts against the merchant.
+    "collect-due-invoices": {
+        "task": "billing.tasks.collect_due_invoices",
+        "schedule": crontab(hour=9, minute=30),
+        "options": {"queue": "default", "expires": 3600},
+    },
 }
 
 app.autodiscover_tasks()

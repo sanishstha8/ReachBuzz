@@ -303,6 +303,11 @@ def close_period(subscription: Subscription):
         },
     )
 
+    # Bill the period that just closed, before moving on from it. Generation is
+    # idempotent on (organization, period_start), so a retry that gets this far
+    # twice produces one invoice.
+    _invoice_closed_period(subscription, snapshot)
+
     if subscription.cancel_at_period_end:
         subscription.status = SubscriptionStatus.CANCELED
         subscription.canceled_at = timezone.now()
@@ -321,6 +326,33 @@ def close_period(subscription: Subscription):
         update_fields=["current_period_start", "current_period_end", "status", "updated_at"]
     )
     return snapshot, created
+
+
+def _invoice_closed_period(subscription: Subscription, snapshot) -> None:
+    """
+    Draft and issue an invoice for the period being closed.
+
+    Imported inside the function: ``billing.payments`` imports this module for
+    nothing today, but it imports ``billing.invoicing``, and keeping the
+    direction of the dependency obvious at the call site is cheaper than
+    working out later why an import loop appeared.
+
+    Failures are logged, not raised. A billing period must still roll forward
+    when invoicing has a problem — otherwise one bad invoice freezes a
+    customer's message quota, which punishes them for our fault.
+    """
+    from billing import payments
+
+    try:
+        invoice = payments.generate_invoice(subscription, snapshot)
+        if invoice is not None:
+            payments.issue(invoice)
+    except Exception:
+        logger.exception(
+            "Could not invoice organization %s for the period ending %s",
+            subscription.organization_id,
+            subscription.current_period_end,
+        )
 
 
 def due_for_renewal(now=None):

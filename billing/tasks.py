@@ -63,3 +63,78 @@ def roll_billing_periods() -> dict:
     if closed or failed:
         logger.info("Rolled %s billing period(s) forward, %s failed", closed, failed)
     return {"closed": closed, "failed": failed}
+
+
+@shared_task(name="billing.tasks.collect_due_invoices", ignore_result=True)
+def collect_due_invoices() -> dict:
+    """
+    Attempt payment on every open invoice that has come due.
+
+    Deliberately dull. Each invoice is collected independently, a failure on one
+    is logged and skipped rather than raised, and `collect()` returns None for
+    anything already settled — so a sweep that runs twice in a minute does
+    nothing the second time.
+    """
+    from billing.invoicing import Invoice
+    from billing.payments import collect
+
+    attempted = 0
+    settled = 0
+    failed = 0
+
+    for invoice in Invoice.objects.overdue().select_related("plan", "organization", "subscription"):
+        try:
+            payment = collect(invoice)
+        except Exception:
+            failed += 1
+            logger.exception("Could not collect invoice %s", invoice.number)
+            continue
+
+        if payment is None:
+            continue
+        attempted += 1
+        settled += int(payment.status == "succeeded")
+
+    if attempted or failed:
+        logger.info("Collected %s of %s due invoice(s), %s errored", settled, attempted, failed)
+    return {"attempted": attempted, "settled": settled, "failed": failed}
+
+
+@shared_task(name="billing.tasks.process_payment_webhook", ignore_result=True)
+def process_payment_webhook(event_id: str) -> str:
+    """
+    Interpret one stored webhook event.
+
+    The endpoint stores and answers 200; this does the work. Same split as the
+    WhatsApp webhook, for the same reason — a provider retries a non-200 for
+    days, and with money involved every retry is another chance to credit the
+    same payment twice.
+    """
+    from billing.invoicing import PaymentWebhookEvent, PaymentWebhookStatus
+    from billing.payments import apply_event
+    from billing.providers.factory import get_provider
+
+    event = PaymentWebhookEvent.objects.filter(pk=event_id).first()
+    if event is None:
+        logger.warning("Payment webhook event %s vanished before processing", event_id)
+        return "missing"
+    if event.status == PaymentWebhookStatus.PROCESSED:
+        return "already-processed"
+
+    try:
+        # A loop rather than any(): every event in the payload must be applied,
+        # and any() over a generator stops at the first True.
+        changed = False
+        for parsed in get_provider(event.provider).parse_webhook(event.payload):
+            changed |= apply_event(parsed)
+    except Exception as exc:
+        event.status = PaymentWebhookStatus.FAILED
+        event.error_message = str(exc)[:255]
+        event.save(update_fields=["status", "error_message", "updated_at"])
+        logger.exception("Could not process payment webhook %s", event_id)
+        raise
+
+    event.status = PaymentWebhookStatus.PROCESSED if changed else PaymentWebhookStatus.IGNORED
+    event.processed_at = timezone.now()
+    event.save(update_fields=["status", "processed_at", "updated_at"])
+    return event.status

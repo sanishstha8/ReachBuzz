@@ -46,6 +46,7 @@ Business Platform Cloud API**.
 25. [Organizations and tenant isolation](#25-organizations-and-tenant-isolation)
 26. [Sign-up, email confirmation and password reset](#26-sign-up-email-confirmation-and-password-reset)
 27. [Plans, subscriptions and usage](#27-plans-subscriptions-and-usage)
+28. [Invoices and payments](#28-invoices-and-payments)
 
 ---
 
@@ -510,7 +511,7 @@ full suite before the next one starts.
 | 1 | Organizations, membership, tenant isolation | ✅ Complete — [§25](#25-organizations-and-tenant-isolation) |
 | 2 | Registration, email confirmation, password reset | ✅ Complete — [§26](#26-sign-up-email-confirmation-and-password-reset) |
 | 3 | Plans, subscriptions, usage metering | ✅ Complete — [§27](#27-plans-subscriptions-and-usage) |
-| 4 | Payments and invoices | Not started |
+| 4 | Payments and invoices | ✅ Complete — [§28](#28-invoices-and-payments) |
 | 5 | Per-organization messaging credentials | Not started |
 | 6 | Customer billing dashboard | Not started |
 | 7 | Platform admin dashboard | Not started |
@@ -1386,3 +1387,96 @@ No payment provider, no invoices, no customer-facing billing page, no upgrade
 button. `subscribe()` records an entitlement; it does not charge for one. Keeping
 that seam clean is what lets Stage 4 put a provider behind these calls without
 touching entitlement logic, and Stage 6 build the page that shows it.
+
+---
+
+## 28. Invoices and payments
+
+Stage 4. Stage 3 decided what a customer owes; this collects it.
+
+Everything in this section is written around one assumption: **it will run
+twice.** Celery retries, providers redeliver webhooks for days, operators re-run
+jobs after an outage, and people double-click. So every operation is idempotent,
+and wherever idempotency rests on a check-then-act, a database constraint sits
+underneath — because the check can be wrong and the constraint cannot.
+
+### The provider is abstract, and only the mock is real
+
+`billing/providers/` mirrors `whatsapp/services/` exactly: a `PaymentProvider`
+ABC, a settings-driven factory, a mock implementation. Nothing outside that
+package imports a concrete provider, so `PAYMENT_PROVIDER` is the only thing that
+changes when a real gateway arrives.
+
+Only `mock` is registered. That is not an oversight — a real gateway means
+merchant credentials and a live account, and a half-written integration against
+one is worse than an honest absence. The same position §22 takes on Meta.
+
+The mock **honours idempotency keys**: a key it has seen returns the first
+result rather than charging again. A mock that did not would let a double-charge
+bug pass every test and appear in production. It has no concept of a card, which
+is also deliberate — a mock that accepted card numbers could leak them.
+
+### Three rules in the types
+
+| Rule | Why |
+|---|---|
+| Money is `Decimal`, quantized to 2dp with `ROUND_HALF_UP` | `0.1 + 0.2` is a curiosity elsewhere and a discrepancy on an invoice. Banker's rounding is defensible statistically and indefensible to a customer reading a total |
+| Every charge carries an idempotency key — required, not optional | A charge without one is a charge that can happen twice, and the second one is somebody's money |
+| Providers report; this application decides | A provider that could mark its own charges settled would make a redelivered webhook indistinguishable from a second payment |
+
+### Invoice numbers are gapless
+
+`INV-2026-000123`, from a counter row taken under `select_for_update`. Not
+`max(number) + 1`, which races two workers into the same number; and not a
+database sequence, which does not roll back with its transaction. Several tax
+authorities require gaplessness, and "invoice 41 does not exist" is a question no
+finance team enjoys.
+
+Which is also why a cancelled invoice is **voided, not deleted** — the number
+stays taken, and "invoice 41 was cancelled" beats "invoice 41 never existed" for
+anyone holding a copy of it.
+
+### An issued invoice is immutable
+
+`DRAFT` → `OPEN` freezes the totals; `recalculate()` refuses afterwards. An
+invoice is a statement of what was owed at a moment. A system that can rewrite one
+cannot be reconciled against anything, and a customer holding a copy that no
+longer matches the database has reason to distrust both. The admin enforces the
+same rule: every field goes read-only once issued, and invoices cannot be deleted.
+
+Lines store what was charged, not what today's price list would charge — a plan
+whose price changes next month must not silently rewrite last month's invoice.
+
+### No invoice for an unpriced plan
+
+Every seeded plan currently has `price = None`, so **no invoices are generated
+today**. `generate_invoice()` returns `None` and logs it.
+
+The alternative is worse than nothing. A 0.00 invoice tells a customer they owe
+nothing this month, which is a claim this system cannot make when the page says
+"Pricing on request". Set a price and invoicing starts on the next period close;
+the machinery is built and tested either way.
+
+### The webhook endpoint
+
+`POST /api/billing/webhook/` — the second unauthenticated, CSRF-exempt route, and
+the same design as the first, because a provider retries a non-200 for days.
+
+- **The signature is the authentication.** Nothing is stored, parsed or queued until the HMAC over the *raw body* verifies. Compared as **bytes**, in constant time — `hmac.compare_digest` raises `TypeError` on non-ASCII `str`, which is how a hostile header becomes a 500 instead of a 403. This project already had that bug once, in the WhatsApp webhook.
+- **A replay credits once.** `event_id` is unique, so a redelivery is stored zero times. Enforced by the constraint, caught in its own savepoint — a failed statement poisons the transaction it ran in, so without the savepoint a second event in the same delivery could not be stored after the first was rejected.
+- **200 means stored, not understood.** Processing failures are recorded on the event. Asking the provider to redeliver would not fix a bug on our side, and each redelivery is another chance to double-credit.
+
+### Dunning
+
+A failed payment makes a subscription `PAST_DUE`, which **still sends** — cutting
+a business off the moment a card expires is how a customer learns about a billing
+problem from their own customers. Paying clears it automatically.
+
+`collect_due_invoices` runs daily, not hourly: retrying a declined card every hour
+annoys the customer and, on some networks, counts against the merchant.
+
+### Not in this stage
+
+No customer-facing billing page, no upgrade button, no PDF, no tax calculation,
+no refund initiation from our side (a refund arriving from the provider is
+handled; asking for one is not). Stage 6 builds the page.

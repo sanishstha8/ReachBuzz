@@ -69,6 +69,12 @@ class AuditAction(models.TextChoices):
     SUBSCRIPTION_CHANGED = "subscription_changed", "Subscription plan changed"
     SUBSCRIPTION_CANCELLED = "subscription_cancelled", "Subscription cancelled"
 
+    # Money. An invoice that was issued, settled or cancelled with no trace is
+    # an invoice nobody can reconcile against anything.
+    INVOICE_ISSUED = "invoice_issued", "Invoice issued"
+    INVOICE_PAID = "invoice_paid", "Invoice paid"
+    INVOICE_VOIDED = "invoice_voided", "Invoice voided"
+
 
 class AuditLog(UUIDPrimaryKeyModel):
     """

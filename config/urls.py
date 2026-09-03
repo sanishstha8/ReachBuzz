@@ -15,6 +15,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from billing.webhooks import PaymentWebhookView
 from whatsapp.webhooks import MetaWebhookView
 
 urlpatterns = [
@@ -32,6 +33,9 @@ urlpatterns = [
     # Unauthenticated and CSRF-exempt by necessity: Meta calls it. The HMAC
     # signature over the raw body is what authenticates the request.
     path("api/whatsapp/webhook/", MetaWebhookView.as_view(), name="whatsapp-webhook"),
+    # Same reasoning, higher stakes: a forged delivery report is a wrong number
+    # on a dashboard, a forged payment notification is money.
+    path("api/billing/webhook/", PaymentWebhookView.as_view(), name="payment-webhook"),
     # --- REST API ----------------------------------------------------------
     path("api/auth/", include("accounts.api_urls", namespace="accounts-api")),
     path("api/", include("contacts.api_urls", namespace="contacts-api")),

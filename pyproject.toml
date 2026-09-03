@@ -18,12 +18,16 @@ ignore = [
 # Demonstration data. The randomness shapes a plausible send history; nothing
 # here is a token, a key or an identifier anyone relies on being unguessable.
 "core/management/commands/seed_demo.py" = ["S311"]
+# The simulated payment provider. Its randomness picks which fake decline to
+# return so the retry path can be exercised locally; nothing it generates is a
+# token, a key, or anything anyone relies on being unguessable.
+"billing/providers/mock_provider.py" = ["S311"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["accounts", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "whatsapp"]
+known-first-party = ["accounts", "billing", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "whatsapp"]
 
 [tool.coverage.run]
-source = ["accounts", "campaigns", "contacts", "core", "dashboard", "messaging", "whatsapp"]
+source = ["accounts", "billing", "campaigns", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "whatsapp"]
 omit = ["*/migrations/*", "*/tests/*", "manage.py", "config/wsgi.py", "config/asgi.py"]
 
 [tool.coverage.report]

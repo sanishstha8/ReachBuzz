@@ -11,6 +11,13 @@ from __future__ import annotations
 from django.contrib import admin
 from django.utils.html import format_html
 
+from billing.invoicing import (
+    Invoice,
+    InvoiceLine,
+    InvoiceSequence,
+    Payment,
+    PaymentWebhookEvent,
+)
 from billing.models import Plan, Subscription, UsageSnapshot
 from billing.usage import summary
 
@@ -108,4 +115,106 @@ class UsageSnapshotAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+
+class InvoiceLineInline(admin.TabularInline):
+    model = InvoiceLine
+    extra = 0
+    fields = ("description", "quantity", "unit_amount", "amount")
+    readonly_fields = ("amount",)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        """Lines of an issued invoice are history. Void and reissue instead."""
+        return not (obj and obj.is_issued)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return not (obj and obj.is_issued)
+
+
+class PaymentInline(admin.TabularInline):
+    """Attempts are evidence. Nothing here is editable by hand."""
+
+    model = Payment
+    extra = 0
+    fields = ("created_at", "provider", "provider_reference", "amount", "status", "error_code")
+    readonly_fields = fields
+    ordering = ("-created_at",)
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ("number", "organization", "status", "total_display", "due_at", "paid_at")
+    list_filter = ("status", "currency", "plan")
+    search_fields = ("number", "organization__name")
+    date_hierarchy = "created_at"
+    autocomplete_fields = ("organization", "plan")
+    inlines = [InvoiceLineInline, PaymentInline]
+    readonly_fields = (
+        "number",
+        "amount_paid",
+        "issued_at",
+        "paid_at",
+        "voided_at",
+        "created_at",
+        "updated_at",
+    )
+
+    @admin.display(description="Total", ordering="total")
+    def total_display(self, obj: Invoice) -> str:
+        due = obj.amount_due
+        if due and obj.status == "open":
+            return f"{obj.currency} {obj.total:,.2f} ({due:,.2f} due)"
+        return f"{obj.currency} {obj.total:,.2f}"
+
+    def get_readonly_fields(self, request, obj=None):
+        """An issued invoice is frozen. It is voided and reissued, not edited."""
+        if obj and obj.is_issued:
+            return [field.name for field in obj._meta.fields]
+        return self.readonly_fields
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        """Never. A gap in the sequence is what the sequence exists to avoid."""
+        return False
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "invoice", "provider", "amount", "status", "error_code")
+    list_filter = ("status", "provider")
+    search_fields = ("provider_reference", "idempotency_key", "invoice__number")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(PaymentWebhookEvent)
+class PaymentWebhookEventAdmin(admin.ModelAdmin):
+    """The provider's own words, kept verbatim. Our reading of them is not evidence."""
+
+    list_display = ("created_at", "provider", "event_type", "status", "signature_valid")
+    list_filter = ("status", "provider", "signature_valid")
+    search_fields = ("event_id", "event_type")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(InvoiceSequence)
+class InvoiceSequenceAdmin(admin.ModelAdmin):
+    list_display = ("year", "last_number")
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        """Deleting it would restart numbering and reuse numbers already sent."""
         return False

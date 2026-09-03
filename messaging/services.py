@@ -120,9 +120,15 @@ def campaign_stats(campaign) -> CampaignStats:
     )
 
 
-def global_stats() -> dict[str, int]:
-    """Message counts across every campaign, for the dashboard tiles."""
-    counts = Message.objects.aggregate(
+def global_stats(organization) -> dict[str, int]:
+    """
+    Message counts across one organization's campaigns, for the dashboard tiles.
+
+    Takes the organization rather than defaulting to all of them: a tile that
+    silently counted every tenant's messages would be a leak wearing the
+    disguise of a number.
+    """
+    counts = Message.objects.for_organization(organization).aggregate(
         total=Count("id"),
         **{
             f"{status}_count": Count("id", filter=Q(status=status))

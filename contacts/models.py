@@ -17,6 +17,7 @@ from django.utils.translation import gettext_lazy as _
 
 from core.models import BaseModel
 from core.phone import validate_phone_number
+from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 
 
 class ContactStatus(models.TextChoices):
@@ -43,7 +44,7 @@ class OptOutSource(models.TextChoices):
     PROVIDER = "provider", _("Reported by the messaging provider")
 
 
-class ContactQuerySet(models.QuerySet):
+class ContactQuerySet(OrganizationScopedQuerySet):
     def opted_in(self) -> ContactQuerySet:
         return self.filter(opted_in=True)
 
@@ -73,7 +74,7 @@ class ContactQuerySet(models.QuerySet):
         return self.filter(group_memberships__group=group)
 
 
-class Contact(BaseModel):
+class Contact(OrganizationOwnedModel, BaseModel):
     """A person who may receive WhatsApp messages, and their consent state."""
 
     name = models.CharField(max_length=150, db_index=True)
@@ -167,7 +168,7 @@ class Contact(BaseModel):
         self.opt_out_at = when or timezone.now()
 
 
-class ContactGroupQuerySet(models.QuerySet):
+class ContactGroupQuerySet(OrganizationScopedQuerySet):
     def with_counts(self) -> ContactGroupQuerySet:
         """
         Annotate ``member_count`` and ``eligible_count``.
@@ -189,7 +190,7 @@ class ContactGroupQuerySet(models.QuerySet):
         )
 
 
-class ContactGroup(BaseModel):
+class ContactGroup(OrganizationOwnedModel, BaseModel):
     """A named list of contacts, used as a campaign audience."""
 
     name = models.CharField(max_length=120, unique=True)
@@ -283,7 +284,7 @@ class RowOutcome(models.TextChoices):
     INVALID = "invalid", _("Invalid data")
 
 
-class ContactImport(BaseModel):
+class ContactImport(OrganizationOwnedModel, BaseModel):
     """
     One CSV upload and its outcome.
 
@@ -324,6 +325,8 @@ class ContactImport(BaseModel):
         blank=True,
         related_name="contact_imports",
     )
+
+    objects = OrganizationScopedQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at"]

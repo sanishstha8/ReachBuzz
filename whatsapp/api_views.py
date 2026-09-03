@@ -12,6 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from core.permissions import CanManageCampaigns, IsAdministrator
+from organizations.scoping import OrganizationScopedViewSetMixin
 from whatsapp.models import MessageTemplate
 from whatsapp.serializers import (
     LocalTemplateCreateSerializer,
@@ -28,7 +29,7 @@ from whatsapp.services.templates import (
 logger = logging.getLogger(__name__)
 
 
-class MessageTemplateViewSet(viewsets.ModelViewSet):
+class MessageTemplateViewSet(OrganizationScopedViewSetMixin, viewsets.ModelViewSet):
     """
     Templates are read-mostly.
 
@@ -45,7 +46,7 @@ class MessageTemplateViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
-        queryset = MessageTemplate.objects.all()
+        queryset = self.scoped(MessageTemplate)
 
         usable_only = self.request.query_params.get("usable")
         if usable_only in ("true", "1"):
@@ -72,7 +73,7 @@ class MessageTemplateViewSet(viewsets.ModelViewSet):
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        template = serializer.save(created_by=request.user)
+        template = serializer.save(created_by=request.user, organization=self.organization)
 
         return Response(
             MessageTemplateSerializer(template).data, status=status.HTTP_201_CREATED
@@ -115,7 +116,9 @@ class MessageTemplateViewSet(viewsets.ModelViewSet):
     )
     @action(detail=False, methods=["post"])
     def sync(self, request: Request) -> Response:
-        count = sync_templates_from_provider(user=request.user)
+        count = sync_templates_from_provider(
+            organization=self.organization, user=request.user
+        )
         templates = MessageTemplate.objects.all()
         return Response(
             {"synced": count, "results": MessageTemplateSerializer(templates, many=True).data}

@@ -208,7 +208,7 @@ class DayActivity:
         return getattr(self, bucket)
 
 
-def daily_activity(period: ReportPeriod) -> list[DayActivity]:
+def daily_activity(organization, period: ReportPeriod) -> list[DayActivity]:
     """
     Message outcomes per day, with quiet days present as zeros.
 
@@ -216,7 +216,8 @@ def daily_activity(period: ReportPeriod) -> list[DayActivity]:
     sent implies a steadier send rate than actually happened.
     """
     rows = (
-        Message.objects.filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
+        Message.objects.for_organization(organization)
+        .filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
         .annotate(day=TruncDate("created_at"))
         .values("day")
         .annotate(**_bucket_aggregates())
@@ -304,17 +305,17 @@ class Overview:
         return self.opt_ins - self.opt_outs
 
 
-def overview(period: ReportPeriod) -> Overview:
+def overview(organization, period: ReportPeriod) -> Overview:
     """Everything the headline tiles need, in three queries."""
-    message_counts = Message.objects.filter(
+    message_counts = Message.objects.for_organization(organization).filter(
         created_at__gte=period.start_at, created_at__lt=period.end_at
     ).aggregate(messages=Count("id"), **_bucket_aggregates())
 
-    campaign_counts = Campaign.objects.filter(
+    campaign_counts = Campaign.objects.for_organization(organization).filter(
         started_at__gte=period.start_at, started_at__lt=period.end_at
     ).aggregate(launched=Count("id", distinct=True), recipients=Count("messages"))
 
-    contact_counts = Contact.objects.aggregate(
+    contact_counts = Contact.objects.for_organization(organization).aggregate(
         added=Count("id", filter=Q(created_at__gte=period.start_at, created_at__lt=period.end_at)),
         opt_ins=Count("id", filter=Q(opt_in_at__gte=period.start_at, opt_in_at__lt=period.end_at)),
         opt_outs=Count(
@@ -387,7 +388,9 @@ class CampaignRow:
         return self.campaign.template.name if self.campaign.template_id else ""
 
 
-def campaign_performance(period: ReportPeriod, *, limit: int | None = None) -> list[CampaignRow]:
+def campaign_performance(
+    organization, period: ReportPeriod, *, limit: int | None = None
+) -> list[CampaignRow]:
     """
     Campaigns *launched* in the period, with their delivery outcomes.
 
@@ -395,7 +398,8 @@ def campaign_performance(period: ReportPeriod, *, limit: int | None = None) -> l
     and a campaign that was never launched has no performance to report.
     """
     queryset = (
-        Campaign.objects.filter(started_at__gte=period.start_at, started_at__lt=period.end_at)
+        Campaign.objects.for_organization(organization)
+        .filter(started_at__gte=period.start_at, started_at__lt=period.end_at)
         .select_related("template")
         .annotate(**_campaign_status_annotations())
         .order_by("-started_at")
@@ -406,7 +410,7 @@ def campaign_performance(period: ReportPeriod, *, limit: int | None = None) -> l
     return [CampaignRow(campaign=c, stats=_stats_from_annotations(c)) for c in queryset]
 
 
-def active_campaigns() -> list[CampaignRow]:
+def active_campaigns(organization) -> list[CampaignRow]:
     """
     Campaigns sending right now, for the dashboard's live panel.
 
@@ -414,7 +418,8 @@ def active_campaigns() -> list[CampaignRow]:
     one they just stopped, not lose it from the panel the moment they stop it.
     """
     queryset = (
-        Campaign.objects.filter(status__in=[CampaignStatus.PROCESSING, CampaignStatus.PAUSED])
+        Campaign.objects.for_organization(organization)
+        .filter(status__in=[CampaignStatus.PROCESSING, CampaignStatus.PAUSED])
         .select_related("template")
         .annotate(**_campaign_status_annotations())
         .order_by("-started_at", "-created_at")
@@ -427,7 +432,7 @@ def active_campaigns() -> list[CampaignRow]:
 # ---------------------------------------------------------------------------
 
 
-def failure_reasons(period: ReportPeriod, *, limit: int = 20) -> list[FailureReason]:
+def failure_reasons(organization, period: ReportPeriod, *, limit: int = 20) -> list[FailureReason]:
     """
     Why messages failed in the period, most common first.
 
@@ -436,7 +441,7 @@ def failure_reasons(period: ReportPeriod, *, limit: int = 20) -> list[FailureRea
     campaign. All this adds is the period.
     """
     return failure_breakdown(
-        Message.objects.filter(
+        Message.objects.for_organization(organization).filter(
             created_at__gte=period.start_at, created_at__lt=period.end_at
         ),
         limit=limit,
@@ -444,10 +449,11 @@ def failure_reasons(period: ReportPeriod, *, limit: int = 20) -> list[FailureRea
     )
 
 
-def recent_failures(*, limit: int = 8) -> list[Message]:
+def recent_failures(organization, *, limit: int = 8) -> list[Message]:
     """The newest failed messages across every campaign."""
     return list(
-        Message.objects.filter(status=MessageStatus.FAILED)
+        Message.objects.for_organization(organization)
+        .filter(status=MessageStatus.FAILED)
         .select_related("contact", "campaign")
         .order_by("-failed_at", "-created_at")[:limit]
     )
@@ -476,7 +482,7 @@ class ConsentSummary:
         return round(self.opted_in / self.total * 100, 1)
 
 
-def consent_summary() -> ConsentSummary:
+def consent_summary(organization) -> ConsentSummary:
     """
     Current consent state. Deliberately not a period figure.
 
@@ -488,7 +494,7 @@ def consent_summary() -> ConsentSummary:
 
     # Aliases must not reuse a field name, or Django resolves the filter's
     # reference to the alias and refuses to aggregate over an aggregate.
-    totals = Contact.objects.aggregate(
+    totals = Contact.objects.for_organization(organization).aggregate(
         total_count=Count("id"),
         opted_in_count=Count("id", filter=Q(opted_in=True)),
         eligible_count=Count("id", filter=Q(opted_in=True, status=ContactStatus.ACTIVE)),
@@ -498,7 +504,8 @@ def consent_summary() -> ConsentSummary:
     source_labels = dict(OptInSource.choices)
     by_source = tuple(
         (str(source_labels.get(row["opt_in_source"]) or "Not recorded"), row["count"])
-        for row in Contact.objects.filter(opted_in=True)
+        for row in Contact.objects.for_organization(organization)
+        .filter(opted_in=True)
         .values("opt_in_source")
         .annotate(count=Count("id"))
         .order_by("-count")
@@ -507,7 +514,10 @@ def consent_summary() -> ConsentSummary:
     status_labels = dict(ContactStatus.choices)
     by_status = tuple(
         (str(status_labels.get(row["status"], row["status"])), row["count"])
-        for row in Contact.objects.values("status").annotate(count=Count("id")).order_by("-count")
+        for row in Contact.objects.for_organization(organization)
+        .values("status")
+        .annotate(count=Count("id"))
+        .order_by("-count")
     )
 
     return ConsentSummary(

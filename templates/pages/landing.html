@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% comment %}
+Public landing page. Replaces the whole authenticated layout — the sidebar and
+topbar in base.html are for operators, not visitors — the same way the sign-in
+page does.
+
+Every link here points somewhere that exists. Where the reference design had a
+link to a page this project does not have (a blog, a help centre, a refund
+policy), it is left out rather than pointed at a 404.
+{% endcomment %}
+
+{% block title %}{{ brand_name }} &middot; {{ brand_tagline }}{% endblock %}
+
+{% block extra_css %}<link rel="stylesheet" href="{% static 'css/landing.css' %}">{% endblock %}
+
+{% block body_class %}marketing{% endblock %}
+
+{% block layout %}
+<a class="visually-hidden-focusable skip-link" href="#main-content">Skip to main content</a>
+
+<header class="mk-header" id="siteHeader">
+  <div class="container">
+    <div class="mk-header__inner">
+      <a class="mk-brand" href="{% url 'pages:landing' %}">
+        <span class="mk-brand__mark"><i class="bi bi-whatsapp" aria-hidden="true"></i></span>
+        {{ brand_name }}
+      </a>
+
+      <nav class="mk-nav" aria-label="Sections of this page">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+        <a href="#contact">Contact</a>
+      </nav>
+
+      <div class="mk-header__actions">
+        <a class="mk-btn mk-btn--quiet d-none d-sm-inline-flex" href="{% url 'accounts:login' %}">Sign in</a>
+        <a class="mk-btn mk-btn--primary" href="{% url 'accounts:register' %}">Get started</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="main-content">
+
+  {# ---------------------------------------------------------------- hero #}
+  <section class="mk-hero">
+    <div class="container">
+      <div class="row align-items-center g-5">
+        <div class="col-12 col-lg-6">
+          <span class="mk-eyebrow">
+            <i class="bi bi-whatsapp" aria-hidden="true"></i> WhatsApp Business messaging
+          </span>
+
+          <h1 class="mk-hero__title">
+            Send messages.<br>
+            Reach more.
+            <em>Grow your business.</em>
+          </h1>
+
+          <p class="mk-hero__lede">
+            Manage your contacts, build campaigns around approved WhatsApp templates,
+            and watch delivery land in real time — on the official Meta Cloud API,
+            with consent enforced at every step.
+          </p>
+
+          <div class="mk-hero__actions">
+            <a class="mk-btn mk-btn--primary mk-btn--lg" href="{% url 'accounts:register' %}">
+              Get started free <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </a>
+            <a class="mk-btn mk-btn--ghost mk-btn--lg" href="#how-it-works">
+              <i class="bi bi-play-circle" aria-hidden="true"></i> See how it works
+            </a>
+          </div>
+
+          <ul class="mk-trust">
+            <li><i class="bi bi-patch-check-fill" aria-hidden="true"></i> Official WhatsApp Cloud API</li>
+            <li><i class="bi bi-shield-check" aria-hidden="true"></i> Consent enforced</li>
+            <li><i class="bi bi-clipboard-check" aria-hidden="true"></i> Audited end to end</li>
+          </ul>
+        </div>
+
+        {# A mock of the operator dashboard, in markup rather than a screenshot #}
+        <div class="col-12 col-lg-6">
+          <div class="mk-preview" role="img"
+               aria-label="Preview of the {{ brand_name }} dashboard, showing contact and delivery totals, a list of recent campaigns with progress bars, and a breakdown of message outcomes. Figures shown are sample data.">
+            <div class="mk-preview__rail" aria-hidden="true">
+              <div class="mk-preview__brand"><i class="bi bi-whatsapp"></i> {{ brand_name }}</div>
+              <div class="mk-preview__navitem is-active"><i class="bi bi-speedometer2"></i> Dashboard</div>
+              <div class="mk-preview__navitem"><i class="bi bi-people"></i> Contacts</div>
+              <div class="mk-preview__navitem"><i class="bi bi-collection"></i> Groups</div>
+              <div class="mk-preview__navitem"><i class="bi bi-megaphone"></i> Campaigns</div>
+              <div class="mk-preview__navitem"><i class="bi bi-file-earmark-text"></i> Templates</div>
+              <div class="mk-preview__navitem"><i class="bi bi-bar-chart"></i> Reports</div>
+            </div>
+
+            <div class="mk-preview__body" aria-hidden="true">
+              <div class="mk-preview__tiles">
+                <div class="mk-tile"><div class="mk-tile__label">Contacts</div><div class="mk-tile__value">1,284</div></div>
+                <div class="mk-tile"><div class="mk-tile__label">Sent</div><div class="mk-tile__value">4,510</div></div>
+                <div class="mk-tile"><div class="mk-tile__label">Delivered</div><div class="mk-tile__value">4,192</div></div>
+                <div class="mk-tile"><div class="mk-tile__label">Failed</div><div class="mk-tile__value">112</div></div>
+              </div>
+
+              <div class="mk-panel">
+                <div class="mk-panel__title">Recent campaigns</div>
+                <table>
+                  <thead>
+                    <tr><th>Campaign</th><th>Recipients</th><th>Status</th><th style="width:28%">Progress</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Dashain Offer</td><td>820</td>
+                      <td><span class="mk-chip mk-chip--done">Completed</span></td>
+                      <td><div class="mk-bar"><span style="width:100%"></span></div></td>
+                    </tr>
+                    <tr>
+                      <td>New Product Launch</td><td>640</td>
+                      <td><span class="mk-chip mk-chip--live">Sending</span></td>
+                      <td><div class="mk-bar"><span style="width:72%"></span></div></td>
+                    </tr>
+                    <tr>
+                      <td>Loyalty Reminder</td><td>410</td>
+                      <td><span class="mk-chip mk-chip--done">Completed</span></td>
+                      <td><div class="mk-bar"><span style="width:100%"></span></div></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mk-preview__split">
+                <div class="mk-panel">
+                  <div class="mk-panel__title">Message outcomes</div>
+                  <div class="mk-donut">
+                    <div class="mk-donut__ring"></div>
+                    <div>
+                      <div class="mk-legend"><span class="mk-dot" style="background:#0e8f5b"></span> Delivered 4,192</div>
+                      <div class="mk-legend"><span class="mk-dot" style="background:#2a78d6"></span> Sent 206</div>
+                      <div class="mk-legend"><span class="mk-dot" style="background:#d03b3b"></span> Failed 112</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mk-panel">
+                  <div class="mk-panel__title">Quick actions</div>
+                  <div class="mk-action"><i class="bi bi-megaphone"></i> Create campaign</div>
+                  <div class="mk-action"><i class="bi bi-person-plus"></i> Add contact</div>
+                  <div class="mk-action"><i class="bi bi-upload"></i> Import CSV</div>
+                  <div class="mk-action"><i class="bi bi-file-earmark-text"></i> Templates</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="text-center small text-body-secondary mt-2 mb-0">Dashboard preview with sample data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------------ features #}
+  <section class="mk-section mk-section--tint" id="features" aria-labelledby="featuresHeading">
+    <div class="container">
+      <div class="mk-section__head">
+        <h2 id="featuresHeading">Everything you need to run a campaign</h2>
+        <p>From the first imported contact to the delivery receipt, without leaving the platform.</p>
+      </div>
+
+      <div class="row g-4">
+        {% for feature in features %}
+          <div class="col-12 col-md-6 col-lg-4">
+            <article class="mk-card">
+              <span class="mk-card__icon"><i class="bi bi-{{ feature.icon }}" aria-hidden="true"></i></span>
+              <h3>{{ feature.title }}</h3>
+              <p>{{ feature.body }}</p>
+            </article>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {# -------------------------------------------------------- how it works #}
+  <section class="mk-section" id="how-it-works" aria-labelledby="howHeading">
+    <div class="container">
+      <div class="mk-section__head">
+        <h2 id="howHeading">How it works</h2>
+        <p>Four steps from a spreadsheet of customers to a campaign you can account for.</p>
+      </div>
+
+      <ol class="mk-steps">
+        {% for step in steps %}
+          <li class="mk-step">
+            <span class="mk-step__marker"><i class="bi bi-{{ step.icon }}" aria-hidden="true"></i></span>
+            <h3>{{ forloop.counter }}. {{ step.title }}</h3>
+            <p>{{ step.body }}</p>
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------------- pricing #}
+  <section class="mk-section mk-section--tint" id="pricing" aria-labelledby="pricingHeading">
+    <div class="container">
+      <div class="mk-section__head">
+        <h2 id="pricingHeading">Pricing</h2>
+        <p>
+          {% if any_price_set %}
+            Pick the tier that matches your audience. Every plan sends through your own
+            WhatsApp Business Account.
+          {% else %}
+            Every plan sends through your own WhatsApp Business Account. Tell us the size
+            of your audience and we will quote for it.
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="row g-4 justify-content-center">
+        {% for tier in tiers %}
+          <div class="col-12 col-md-6 col-lg-4">
+            <div class="mk-tier {% if tier.featured %}mk-tier--featured{% endif %}">
+              {% if tier.featured %}<span class="mk-tier__flag">Most popular</span>{% endif %}
+
+              <h3>{{ tier.name }}</h3>
+
+              {% if tier.has_price %}
+                <div class="mk-tier__price">{{ tier.price }}</div>
+                {% if tier.period %}<div class="mk-tier__period">{{ tier.period }}</div>{% endif %}
+              {% else %}
+                {# No figure has been set. Saying so beats inventing one. #}
+                <div class="mk-tier__price mk-tier__price--onRequest">Pricing on request</div>
+              {% endif %}
+
+              <p class="mk-tier__summary">{{ tier.summary }}</p>
+
+              <ul class="mk-tier__list">
+                {% for item in tier.features %}
+                  <li><i class="bi bi-check-circle-fill" aria-hidden="true"></i> <span>{{ item }}</span></li>
+                {% endfor %}
+              </ul>
+
+              <a class="mk-btn {% if tier.featured %}mk-btn--primary{% else %}mk-btn--ghost{% endif %} w-100"
+                 href="#contact">Talk to us</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <p class="text-center text-body-secondary small mt-4 mb-0">
+        WhatsApp conversation charges are billed to you by Meta and are separate from this platform.
+      </p>
+    </div>
+  </section>
+
+  {# ----------------------------------------------------------------- faq #}
+  <section class="mk-section" id="faq" aria-labelledby="faqHeading">
+    <div class="container">
+      <div class="mk-section__head">
+        <h2 id="faqHeading">Frequently asked questions</h2>
+        <p>The things worth knowing before you send anything.</p>
+      </div>
+
+      <div class="mk-faq">
+        {% for item in faq %}
+          <details {% if forloop.first %}open{% endif %}>
+            <summary>
+              <span>{{ item.question }}</span>
+              <i class="bi bi-plus-lg" aria-hidden="true"></i>
+            </summary>
+            <p class="mk-faq__answer">{{ item.answer }}</p>
+          </details>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------------- contact #}
+  <section class="mk-section mk-section--tint" id="contact" aria-labelledby="contactHeading">
+    <div class="container">
+      <div class="mk-section__head">
+        <h2 id="contactHeading">Get in touch</h2>
+        <p>
+          Create an account in a minute, or tell us what you need and we will help you
+          get set up.
+        </p>
+      </div>
+
+      <div class="mk-contact">
+        {% comment %}
+        Only rendered when there is an address to render. A visitor must never
+        be shown configuration advice meant for whoever deploys this.
+        {% endcomment %}
+        {% if support_email %}
+          <div class="mk-contact__card">
+            <i class="bi bi-envelope" aria-hidden="true"></i>
+            <h3>Email us</h3>
+            <a href="mailto:{{ support_email }}">{{ support_email }}</a>
+          </div>
+        {% endif %}
+
+        <div class="mk-contact__card">
+          <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+          <h3>Already have an account?</h3>
+          <p><a href="{% url 'accounts:login' %}">Sign in to your dashboard</a></p>
+        </div>
+
+        <div class="mk-contact__card">
+          <i class="bi bi-code-square" aria-hidden="true"></i>
+          <h3>Building an integration?</h3>
+          <p><a href="{% url 'api-docs' %}">Read the API documentation</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ------------------------------------------------------- closing pitch #}
+  <section class="mk-section pt-0">
+    <div class="container">
+      <div class="mk-cta">
+        <i class="bi bi-whatsapp mk-cta__mark" aria-hidden="true"></i>
+        <div class="row align-items-center g-4">
+          <div class="col-12 col-lg-7">
+            <h2>Ready to reach your customers on WhatsApp?</h2>
+            <p>
+              Bring your own WhatsApp Business Account and start sending campaigns your
+              customers actually asked for.
+            </p>
+          </div>
+          <div class="col-12 col-lg-5 text-lg-end">
+            <a class="mk-btn mk-btn--onDark mk-btn--lg" href="{% url 'accounts:register' %}">
+              Get started free <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="mk-footer">
+  <div class="container">
+    <div class="row g-4">
+      <div class="col-12 col-lg-4">
+        <a class="mk-footer__brand" href="{% url 'pages:landing' %}">
+          <i class="bi bi-whatsapp" aria-hidden="true"></i> {{ brand_name }}
+        </a>
+        <p class="mt-3 mb-0" style="max-width: 26rem;">{{ brand_description }}</p>
+      </div>
+
+      <div class="col-6 col-lg-2 offset-lg-2">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#how-it-works">How it works</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+
+      <div class="col-6 col-lg-2">
+        <h4>Developers</h4>
+        <ul>
+          <li><a href="{% url 'api-docs' %}">API documentation</a></li>
+          <li><a href="{% url 'api-redoc' %}">API reference</a></li>
+          <li><a href="{% url 'api-schema' %}">OpenAPI schema</a></li>
+        </ul>
+      </div>
+
+      <div class="col-6 col-lg-2">
+        <h4>Account</h4>
+        <ul>
+          <li><a href="{% url 'accounts:login' %}">Sign in</a></li>
+          <li><a href="{% url 'accounts:register' %}">Create an account</a></li>
+          {% if support_email %}
+            <li><a href="mailto:{{ support_email }}">Support</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="mk-footer__bottom d-flex flex-wrap justify-content-between gap-2">
+      <span>&copy; {% now "Y" %} {{ business_display_name|default:brand_name }}. All rights reserved.</span>
+      <span>Messages are sent through the official Meta WhatsApp Business Platform.</span>
+    </div>
+  </div>
+</footer>
+{% endblock layout %}
+
+{% block extra_js %}
+<script>
+  // Two small touches, both progressive: the page is complete without them.
+  (function () {
+    const header = document.getElementById('siteHeader');
+    const onScroll = () => header.classList.toggle('is-stuck', window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    // Mark the nav link for whichever section is currently in view.
+    const links = Array.from(document.querySelectorAll('.mk-nav a'));
+    const sections = links
+      .map((link) => document.querySelector(link.getAttribute('href')))
+      .filter(Boolean);
+
+    if (!('IntersectionObserver' in window) || !sections.length) { return; }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) { return; }
+        links.forEach((link) => {
+          link.classList.toggle('is-active', link.getAttribute('href') === '#' + entry.target.id);
+        });
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+
+    sections.forEach((section) => observer.observe(section));
+  })();
+</script>
+{% endblock %}

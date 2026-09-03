@@ -89,22 +89,28 @@ class Command(BaseCommand):
 
         random.seed(options["seed"])
         user = self._demo_user()
+        organization = self._demo_organization(user)
 
-        contacts = self._create_contacts(options["contacts"], user)
-        groups = self._create_groups(contacts, user)
-        template = self._create_template(user)
+        contacts = self._create_contacts(options["contacts"], user, organization)
+        groups = self._create_groups(contacts, user, organization)
+        template = self._create_template(user, organization)
         self._create_campaigns(
             count=options["campaigns"],
             days=options["days"],
             groups=groups,
             template=template,
             user=user,
+            organization=organization,
         )
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("Demo data created."))
-        self.stdout.write("  Dashboard  http://127.0.0.1:8000/")
-        self.stdout.write("  Reports    http://127.0.0.1:8000/reports/")
+        # Built from the URL names so a route move cannot leave this stale.
+        from django.urls import reverse
+
+        host = "http://127.0.0.1:8000"
+        self.stdout.write(f"  Dashboard  {host}{reverse('dashboard:home')}")
+        self.stdout.write(f"  Reports    {host}{reverse('dashboard:reports')}")
         self.stdout.write("")
         self.stdout.write("Remove it again with: python manage.py seed_demo --clear")
 
@@ -126,6 +132,28 @@ class Command(BaseCommand):
             )
         if not settings.DEBUG:
             raise CommandError("seed_demo refuses to run with DEBUG=False.")
+
+    def _demo_organization(self, user):
+        """
+        The tenant the demo data belongs to.
+
+        Everything a customer owns is scoped to an organization now, so seeded
+        data without one would be invisible the moment the views enforce it.
+        Reuses whichever organization the user already belongs to rather than
+        making a second one.
+        """
+        from organizations.models import Organization, OrganizationMember, OrganizationRole
+        from organizations.scoping import organization_for
+
+        existing = organization_for(user)
+        if existing is not None:
+            return existing
+
+        organization = Organization.objects.create(name="Demo Organization", owner=user)
+        OrganizationMember.objects.create(
+            organization=organization, user=user, role=OrganizationRole.OWNER
+        )
+        return organization
 
     def _demo_user(self):
         from django.contrib.auth import get_user_model
@@ -167,7 +195,7 @@ class Command(BaseCommand):
 
     # -- Creation -----------------------------------------------------------
 
-    def _create_contacts(self, count: int, user) -> list:
+    def _create_contacts(self, count: int, user, organization) -> list:
         from contacts.models import Contact, ContactStatus, OptInSource
         from contacts.services import create_contact, set_consent
         from core.exceptions import ConflictError
@@ -197,6 +225,7 @@ class Command(BaseCommand):
                     email=f"demo{index}@example.invalid",
                     status=status,
                     notes=MARKER,
+                    organization=organization,
                     user=user,
                 )
             except ConflictError:
@@ -228,14 +257,16 @@ class Command(BaseCommand):
         self.stdout.write(f"Contacts      {len(created)}")
         return created
 
-    def _create_groups(self, contacts: list, user) -> list:
+    def _create_groups(self, contacts: list, user, organization) -> list:
         from contacts.models import ContactGroup
         from contacts.services import add_contacts_to_group_bulk
 
         groups = []
         for name, description in GROUPS:
             group, _ = ContactGroup.objects.get_or_create(
-                name=name, defaults={"description": f"{description} {MARKER}"}
+                name=name,
+                organization=organization,
+                defaults={"description": f"{description} {MARKER}"},
             )
             groups.append(group)
             if not contacts:
@@ -247,7 +278,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Groups        {len(groups)}")
         return groups
 
-    def _create_template(self, user):
+    def _create_template(self, user, organization):
         """
         A local, unsubmitted template.
 
@@ -258,6 +289,7 @@ class Command(BaseCommand):
 
         template, _ = MessageTemplate.objects.get_or_create(
             name="seed_demo_offer",
+            organization=organization,
             defaults={
                 "language": "en",
                 "category": TemplateCategory.MARKETING,
@@ -270,7 +302,9 @@ class Command(BaseCommand):
         )
         return template
 
-    def _create_campaigns(self, *, count: int, days: int, groups: list, template, user) -> None:
+    def _create_campaigns(
+        self, *, count: int, days: int, groups: list, template, user, organization
+    ) -> None:
         from campaigns.models import CampaignMessageType, CampaignStatus
         from campaigns.services import (
             create_campaign,
@@ -287,7 +321,10 @@ class Command(BaseCommand):
 
         for index, name in enumerate(names):
             campaign = create_campaign(
-                name=name, description=f"Demonstration campaign. {MARKER}", user=user
+                name=name,
+                description=f"Demonstration campaign. {MARKER}",
+                organization=organization,
+                user=user,
             )
             set_audience(campaign, random.sample(groups, k=random.randint(1, len(groups))))
             set_message(

@@ -1,4 +1,4 @@
-# ReBuzz — Business Messaging & Automation Platform
+# ReachBuzz — Business Messaging & Automation Platform
 
 [![CI](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml)
 
@@ -42,6 +42,9 @@ Business Platform Cloud API**.
 21. [Dashboard, monitoring and reports](#21-dashboard-monitoring-and-reports)
 22. [Meta Cloud API integration](#22-meta-cloud-api-integration)
 23. [Security posture](#23-security-posture)
+24. [The landing page](#24-the-landing-page)
+25. [Organizations and tenant isolation](#25-organizations-and-tenant-isolation)
+26. [Sign-up, email confirmation and password reset](#26-sign-up-email-confirmation-and-password-reset)
 
 ---
 
@@ -61,6 +64,7 @@ permissions and policies of the connected Meta WhatsApp Business account.
 
 | Area | Capability |
 |---|---|
+| Landing page | Public marketing page at `/` — features, how it works, pricing, FAQ and contact |
 | Authentication | Email sign-in, session security, role-based authorization (Administrator / Operator / Viewer), CSRF protection, sign-in audit trail |
 | Contacts | CRUD, search, filter, pagination, E.164 normalization, duplicate detection, consent tracking, per-contact message history |
 | CSV import | Validated upload, per-row error reporting, duplicate detection, explicit-consent-only opt-in |
@@ -123,6 +127,7 @@ Meta webhook ──▶ signature check ──▶ persist raw event ──▶ 200
 | `messaging` | Per-recipient `Message` records, status events, statistics |
 | `whatsapp` | Provider abstraction, templates, Celery send tasks, webhook endpoint |
 | `dashboard` | Aggregate statistics, monitoring pages, reporting API and CSV exports |
+| `pages` | The public landing page — the only unauthenticated HTML |
 
 The app is named `messaging`, not `messages`, to avoid shadowing `django.contrib.messages`.
 
@@ -259,7 +264,8 @@ inbound webhook processing:
 python manage.py runserver
 ```
 
-- Dashboard: <http://127.0.0.1:8000/>
+- Landing page: <http://127.0.0.1:8000/> (public)
+- Dashboard: <http://127.0.0.1:8000/dashboard/>
 - Sign-in: <http://127.0.0.1:8000/accounts/login/>
 - Django admin: <http://127.0.0.1:8000/admin/>
 - API documentation: <http://127.0.0.1:8000/api/docs/>
@@ -491,6 +497,27 @@ compute.
 All eight phases are complete. The one thing no amount of testing substitutes for is a
 send through a real WhatsApp Business Account — see the verification checklist at the end
 of section 22.
+
+### SaaS upgrade
+
+Turning the finished single-tenant product into something several businesses can
+sign up for and use. Each stage lands on its own branch and is verified against the
+full suite before the next one starts.
+
+| Stage | Scope | Status |
+|---|---|---|
+| 1 | Organizations, membership, tenant isolation | ✅ Complete — [§25](#25-organizations-and-tenant-isolation) |
+| 2 | Registration, email confirmation, password reset | ✅ Complete — [§26](#26-sign-up-email-confirmation-and-password-reset) |
+| 3 | Plans, subscriptions, usage metering | Not started |
+| 4 | Payments and invoices | Not started |
+| 5 | Per-organization messaging credentials | Not started |
+| 6 | Customer billing dashboard | Not started |
+| 7 | Platform admin dashboard | Not started |
+| 8 | Versioned API, notifications, hardening | Not started |
+| 9 | SMS channel | Not started |
+
+Stage 5 is the one that changes how sending works: credentials are a single set in
+the environment today, and every organization currently shares them.
 
 ---
 
@@ -1009,6 +1036,23 @@ Failed sign-ins are audited with the attempted identifier and never the password
 wrong-password and unknown-email responses are identical, and so is the lockout message —
 a message that varied would turn the throttle into a user-enumeration oracle.
 
+**So is every other door a stranger can push.** Stage 2 opened three endpoints that need
+no account, and all three do work on request:
+
+| Endpoint | Limit | Why it needs one |
+|---|---|---|
+| Registration | `SIGNUP_LIMIT` (5/hour) | Writes rows *and* mails an address the caller chose — a way to fill the database and a way to point our mail server at somebody who never asked for it |
+| Password reset | `OUTBOUND_EMAIL_LIMIT` (5/15min) | Mails any registered address on demand |
+| Resend confirmation | `OUTBOUND_EMAIL_LIMIT` | Same, for the signed-in user's own address |
+
+Two details carried over from the sign-in throttle, for the same reasons. The reset
+counter advances on **every** submission, not only the ones that find an account — a
+counter that moved only for real addresses would make the block itself the enumeration
+oracle the identical response exists to prevent. And registration counts accounts
+*created*, not forms *submitted*: a rejected form writes nothing and sends nothing, so it
+costs nothing. All three share one `RateLimit` class in `accounts/throttling.py`, and all
+three are set to 0 to disable.
+
 ### Authorization
 
 Every HTML view carries an auth mixin except the sign-in and sign-out pages; every API
@@ -1054,3 +1098,184 @@ instead of a 500.
 - **`LoginView.redirect_authenticated_user` is on**, which Django notes lets another site
   detect whether a visitor is signed in here by requesting an image URL. Harmless for a
   private internal tool; worth knowing if this is ever exposed more widely.
+
+---
+
+## 24. The landing page
+
+A public marketing page lives at `/`; the operator dashboard moved to
+`/dashboard/`. Nothing else changed — every internal link resolves by URL name, so
+the move touched no other template.
+
+It is the only unauthenticated HTML in the project, and it is held to the same
+standard as the rest of the application: **it may not claim a capability the system
+does not have.**
+
+- **Every link resolves.** The reference design linked to a blog, a help centre and a
+  refund policy. None of those exist here, so none of them are linked. A test walks
+  every anchor on the page and fails on a 404.
+- **No price is invented.** `PRICING_TIERS` in `pages/views.py` carries `price = None`
+  until someone sets a real figure, and a tier without one renders "Pricing on request".
+  Set the `price` field to publish real numbers; the layout is already built for them.
+- **The primary call to action is "Get started", and it now leads somewhere.** It read
+  "Request access" until Stage 2, because self-service registration did not exist and the
+  page may not promise a flow that does not. It points at `accounts:register` now.
+- **The dashboard preview is labelled as sample data.** It is a mock built in markup
+  rather than a screenshot, so it stays sharp and cannot go stale against a redesign.
+- **`SUPPORT_EMAIL` gates the contact card.** With no address configured the card is
+  omitted entirely rather than showing configuration advice to a visitor.
+
+Copy lives as data at the top of `pages/views.py` — features, steps, tiers and FAQ are
+plain dataclasses, so editing the page is editing a list, not hunting through markup.
+
+---
+
+## 25. Organizations and tenant isolation
+
+Until Stage 1 this was a single-tenant application: one business, one set of
+contacts, no notion of who owned a row. A grep for `organization` across 24,000
+lines returned nothing. Everything below is a retrofit, and the constraint that
+shaped it is that a missing tenant filter is invisible — it does not raise, does
+not slow anything down and does not look wrong in review. It just returns
+somebody else's contacts.
+
+### The two models
+
+`Organization` is a customer business. `OrganizationMember` is a user's seat in
+one, with its own role (`OWNER`, `ADMIN`, `MEMBER`).
+
+Membership is a separate row rather than a foreign key on `User` because an
+agency running campaigns for several clients is the obvious next case, and
+retrofitting that later would mean moving every scoped query a second time.
+
+**Organization roles are deliberately separate from `User.role`.** One says what
+you may do inside a business; the other says what you are to the platform.
+Conflating them is how a customer's own administrator ends up seeing another
+customer's data.
+
+### How isolation is enforced
+
+Not by remembering to filter. Every customer-owned model inherits
+`OrganizationOwnedModel`, and every one of their querysets inherits
+`OrganizationScopedQuerySet`, which adds:
+
+```python
+Campaign.objects.get(pk=pk)                        # any customer's campaign
+Campaign.objects.for_organization(org).get(pk=pk)  # only this one's
+```
+
+`for_organization(None)` returns `.none()`, not everything. An unresolved
+organization is a bug either way, and the safe failure is an empty page.
+
+Views never call `Model.objects` directly. `ActiveUserRequiredMixin` resolves
+`self.organization` in `dispatch()` and offers two paths:
+
+| | |
+|---|---|
+| `self.scoped(Model)` | for views that build their own queryset — the filter is visible in the method you are reading |
+| `get_queryset()` | a safety net for views that only declare `model = X` and never override it |
+
+The safety net is not theoretical. A parametrised test that walks every detail,
+update and delete route as the wrong tenant found **thirteen views** in exactly
+that shape — `contacts:group-detail` among them, returning another customer's
+group to anyone who knew its id. DRF has the same pair in
+`OrganizationScopedViewSetMixin` (which also stamps `perform_create` from the
+request, never the payload) and `OrganizationAwareMixin` for plain `APIView`s —
+the CSV import and the statistics endpoints, where an aggregate that counts
+every tenant's rows leaks just as surely as a list that returns them.
+
+Detail views raise **404, not 403**, for another tenant's id. Telling somebody
+an object exists but is not theirs confirms that it exists.
+
+### The three-step migration
+
+A single migration adding a non-null foreign key to a populated table cannot
+work, so:
+
+1. `organizations/0001_initial` — the models, plus the column nullable on all six owned tables.
+2. `organizations/0002_backfill_default_organization` — creates "Default Organization", seats every existing user, fills every row.
+3. `contacts/0003`, `campaigns/0003`, `whatsapp/0004`, `messaging/0004` — tighten to non-null.
+
+The backfill is idempotent, so re-running it against a restored snapshot is
+safe, and it reverses by *detaching* rows rather than deleting the organization
+— deleting would cascade to every contact whose ownership the reversal was
+meant to be undoing.
+
+Step 3 is hand-written. `makemigrations` prompts interactively for a default
+when a nullable field becomes non-null, and the generated `related_name` must
+be the literal `"%(class)ss"`, unresolved, to match what Django emits.
+
+### Adding a model later
+
+Inherit `OrganizationOwnedModel`, and make its queryset inherit
+`OrganizationScopedQuerySet`. A parametrised test asserts that every owned model
+has both, so a model added without them fails there rather than in production.
+
+---
+
+## 26. Sign-up, email confirmation and password reset
+
+Stage 2. Before it, accounts were created by an administrator or `createsuperuser`;
+the landing page's call to action had to read "Request access" because there was
+nothing to send anyone to.
+
+### Registering creates three things atomically
+
+An account, a business, and that account's ownership of it. A user with no
+organization can sign in and see nothing; an organization with no owner cannot be
+administered at all. Neither half is a state worth being able to reach, so
+`accounts.registration.register()` is `@transaction.atomic` — all three, or the
+address stays free to try again.
+
+The new owner is signed in immediately. Making somebody sign in again seconds
+after choosing a password is friction for nothing.
+
+### Confirmation uses signed tokens, not a table
+
+`EmailVerificationTokenGenerator` subclasses Django's `PasswordResetTokenGenerator`.
+That machinery already gives one-time, time-limited links tied to the user's
+current state; a `VerificationToken` model would be a second implementation of it
+with its own expiry bugs and its own rows to clean up.
+
+Its hash includes `email_verified`, which has two consequences worth stating:
+the link stops working the moment it is used, and a password-reset token cannot
+confirm an address (nor a verification token reset a password).
+
+`verify()` returns `None` for every failure — malformed id, unknown user, expired
+token, already used — and the page says the same sentence for all of them.
+Distinguishing "no such account" from "bad token" tells a stranger which
+addresses are registered.
+
+### What being unconfirmed actually blocks
+
+**Sending, and only sending.** An unverified user signs in, browses, imports
+contacts, and builds a campaign. `launch_campaign()` is where it stops:
+
+```python
+if user is not None and not getattr(user, "email_verified", True):
+    raise ValidationFailed("Confirm your email address before sending a campaign.")
+```
+
+Locking somebody out of an empty dashboard helps nobody, and would mean a mail
+outage locks out every new customer. But sending to real people from an address
+that may not exist means the bounce notices, the failure reports and the replies
+all go nowhere. A banner in `base.html` shows until the address is confirmed, with
+a POST-only resend — a GET that sends mail can be fired by a link prefetcher or a
+scanner.
+
+### Password reset
+
+Django's four views with this project's templates. An unknown address gets the
+same page and no email, for the same enumeration reason as above.
+
+### All three doors are rate limited
+
+Registration, password reset and resend all do work for anyone who asks, so all
+three are capped per client address — see the table in
+[§23](#23-security-posture). They extend the sign-in form's existing throttle
+rather than adding a second mechanism.
+
+### What is deliberately not here
+
+No email change flow, no invitations, no second organization per user. Stage 2 is
+the front door only; team management is a later stage.

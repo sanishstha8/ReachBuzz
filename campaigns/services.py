@@ -295,6 +295,7 @@ def create_campaign(
     *,
     name: str,
     description: str = "",
+    organization=None,
     user=None,
     request: HttpRequest | None = None,
 ) -> Campaign:
@@ -303,7 +304,9 @@ def create_campaign(
     if not name:
         raise ValidationFailed("A campaign name is required.", details={"name": ["Enter a name."]})
 
-    campaign = Campaign.objects.create(name=name, description=description or "", created_by=user)
+    campaign = Campaign.objects.create(
+        name=name, description=description or "", organization=organization, created_by=user
+    )
 
     record_audit(
         AuditAction.CAMPAIGN_CREATED,
@@ -377,6 +380,9 @@ def materialize_messages(campaign: Campaign, contacts: Iterable[Contact]) -> int
         rows.append(
             Message(
                 campaign=campaign,
+                # Derived, never passed: a message cannot belong to a different
+                # organization than the campaign that created it.
+                organization_id=campaign.organization_id,
                 contact=contact,
                 to_phone_number=contact.phone_number,
                 message_type=campaign.message_type,
@@ -411,6 +417,21 @@ def launch_campaign(
     if not campaign.can_launch:
         raise InvalidStateTransition(
             f"A {campaign.get_status_display().lower()} campaign cannot be launched."
+        )
+
+    # An unconfirmed address is the one account-level thing that blocks a send.
+    # Verification is not a login gate — being locked out of an empty dashboard
+    # helps nobody — but sending to real people from an address that may not
+    # exist is different: the failure notices and the replies would go nowhere.
+    if user is not None and not getattr(user, "email_verified", True):
+        raise ValidationFailed(
+            "Confirm your email address before sending a campaign.",
+            details={
+                "blockers": [
+                    f"We sent a confirmation link to {user.email}. "
+                    "Click it, or request a new one from your profile."
+                ]
+            },
         )
 
     blockers = validation_blockers(campaign)

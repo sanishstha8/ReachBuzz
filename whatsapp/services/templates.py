@@ -106,7 +106,7 @@ def validate_template_text(body_text: str) -> None:
 
 
 @transaction.atomic
-def sync_templates_from_provider(*, user=None, request=None) -> int:
+def sync_templates_from_provider(*, organization=None, user=None, request=None) -> int:
     """
     Mirror the provider's template registry into our own.
 
@@ -137,7 +137,7 @@ def sync_templates_from_provider(*, user=None, request=None) -> int:
         if not data.name:
             logger.warning("Skipping a template with no name in the provider response.")
             continue
-        _apply_template(data, user=user)
+        _apply_template(data, organization=organization, user=user)
         synced += 1
 
     record_audit(
@@ -151,7 +151,7 @@ def sync_templates_from_provider(*, user=None, request=None) -> int:
     return synced
 
 
-def _apply_template(data, *, user=None) -> MessageTemplate:
+def _apply_template(data, *, organization=None, user=None) -> MessageTemplate:
     """
     Create or update the local mirror of one provider template.
 
@@ -182,6 +182,7 @@ def _apply_template(data, *, user=None) -> MessageTemplate:
     template, created = MessageTemplate.objects.update_or_create(
         name=data.name,
         language=data.language or "",
+        organization=organization,
         defaults=defaults,
     )
     if created and user is not None:

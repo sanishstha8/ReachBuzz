@@ -57,17 +57,17 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
         context["system_status"] = self._system_status()
 
         period = services.ReportPeriod.last_days(DASHBOARD_CHART_DAYS)
-        activity = services.daily_activity(period)
+        activity = services.daily_activity(self.organization, period)
         context["chart_period"] = period
         context["activity"] = activity
         context["chart"] = charts.stacked_column_chart(activity)
         context["chart_id"] = "dashboardActivity"
 
-        active = services.active_campaigns()
+        active = services.active_campaigns(self.organization)
         context["active_campaigns"] = [
             {"row": row, "proportions": charts.stats_proportions(row.stats)} for row in active
         ]
-        context["recent_failures"] = services.recent_failures(limit=6)
+        context["recent_failures"] = services.recent_failures(self.organization, limit=6)
         return context
 
     # -- Statistics ---------------------------------------------------------
@@ -75,14 +75,13 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
     # Each helper returns None while its app is not installed, which is what
     # makes the template render an em dash instead of a misleading zero.
 
-    @staticmethod
-    def _contact_stats() -> dict[str, int] | None:
+    def _contact_stats(self) -> dict[str, int] | None:
         if not apps.is_installed("contacts"):
             return None
 
         from contacts.models import Contact, ContactGroup, ContactStatus
 
-        aggregates = Contact.objects.aggregate(
+        aggregates = Contact.objects.for_organization(self.organization).aggregate(
             total_count=Count("id"),
             opted_in_count=Count("id", filter=Q(opted_in=True)),
             eligible_count=Count("id", filter=Q(opted_in=True, status=ContactStatus.ACTIVE)),
@@ -91,17 +90,16 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
             "total": aggregates["total_count"],
             "opted_in": aggregates["opted_in_count"],
             "eligible": aggregates["eligible_count"],
-            "groups": ContactGroup.objects.count(),
+            "groups": ContactGroup.objects.for_organization(self.organization).count(),
         }
 
-    @staticmethod
-    def _campaign_stats() -> dict[str, int] | None:
+    def _campaign_stats(self) -> dict[str, int] | None:
         if not apps.is_installed("campaigns"):
             return None
 
         from campaigns.models import Campaign, CampaignStatus
 
-        aggregates = Campaign.objects.aggregate(
+        aggregates = Campaign.objects.for_organization(self.organization).aggregate(
             total_count=Count("id"),
             draft_count=Count("id", filter=Q(status=CampaignStatus.DRAFT)),
             processing_count=Count("id", filter=Q(status=CampaignStatus.PROCESSING)),
@@ -114,17 +112,15 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
             "completed": aggregates["completed_count"],
         }
 
-    @staticmethod
-    def _message_stats() -> dict[str, int] | None:
+    def _message_stats(self) -> dict[str, int] | None:
         if not apps.is_installed("messaging"):
             return None
 
         from messaging.services import global_stats
 
-        return global_stats()
+        return global_stats(self.organization)
 
-    @staticmethod
-    def _recent_campaigns():
+    def _recent_campaigns(self):
         if not apps.is_installed("campaigns"):
             return []
 
@@ -132,7 +128,8 @@ class HomeView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
         from messaging.models import MessageStatus
 
         return (
-            Campaign.objects.select_related("template")
+            Campaign.objects.for_organization(self.organization)
+            .select_related("template")
             .annotate(
                 message_count=Count("messages", distinct=True),
                 delivered_count=Count(
@@ -192,21 +189,21 @@ class ReportsView(ActiveUserRequiredMixin, PageTitleMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         period = services.resolve_period(self.request.GET)
-        activity = services.daily_activity(period)
+        activity = services.daily_activity(self.organization, period)
 
         context["period"] = period
         context["period_presets"] = services.PERIOD_PRESETS
         context["selected_preset"] = self._selected_preset(period)
-        context["overview"] = services.overview(period)
+        context["overview"] = services.overview(self.organization, period)
         context["activity"] = activity
         context["chart"] = charts.stacked_column_chart(activity)
         context["chart_id"] = "reportActivity"
         context["campaign_rows"] = [
             {"row": row, "proportions": charts.stats_proportions(row.stats)}
-            for row in services.campaign_performance(period)
+            for row in services.campaign_performance(self.organization, period)
         ]
-        context["failure_reasons"] = services.failure_reasons(period)
-        context["consent"] = services.consent_summary()
+        context["failure_reasons"] = services.failure_reasons(self.organization, period)
+        context["consent"] = services.consent_summary(self.organization)
         context["reports"] = list(reports.REPORTS.values())
         context["time_zone"] = settings.TIME_ZONE
         # Explicit dates rather than ?days=: a download started from this page
@@ -252,7 +249,9 @@ class ReportDownloadView(ActiveUserRequiredMixin, View):
                 "filename": filename,
             },
         )
-        return reports.stream_csv(filename, spec.header, spec.build(period))
+        return reports.stream_csv(
+            filename, spec.header, spec.build(self.organization, period)
+        )
 
 
 class CampaignRecipientsReportView(ActiveUserRequiredMixin, View):

@@ -57,11 +57,11 @@ class TestTemplateModel:
         template = make_template(body_text="Body {{b}}", header_text="Header {{h}}")
         assert template.variables == ["h", "b"]
 
-    def test_name_and_language_are_unique_together(self, make_template) -> None:
+    def test_name_and_language_are_unique_together(self, make_template, organization) -> None:
         make_template("promo", language="en_US")
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                MessageTemplate.objects.create(name="promo", language="en_US", body_text="x")
+                MessageTemplate.objects.create(name="promo", language="en_US", body_text="x", organization=organization)
 
     def test_same_name_in_another_language_is_allowed(self, make_template) -> None:
         make_template("promo", language="en_US")
@@ -166,7 +166,7 @@ class TestRendering:
 
 
 class TestSync:
-    def test_sync_raises_until_a_provider_is_integrated(self) -> None:
+    def test_sync_raises_until_a_provider_is_integrated(self, organization) -> None:
         """Returning 0 would look like 'no templates' rather than 'not wired up'."""
         with pytest.raises(ProviderNotConfigured):
-            sync_templates_from_provider()
+            sync_templates_from_provider(organization=organization)

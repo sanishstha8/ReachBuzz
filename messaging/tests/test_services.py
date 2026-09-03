@@ -254,7 +254,7 @@ class TestCampaignStats:
 
 
 class TestGlobalStats:
-    def test_aggregates_across_campaigns(self, make_campaign, make_contact) -> None:
+    def test_aggregates_across_campaigns(self, make_campaign, make_contact, organization) -> None:
         for index, status in enumerate(
             [MessageStatus.SENT, MessageStatus.READ, MessageStatus.FAILED, MessageStatus.PENDING]
         ):
@@ -265,7 +265,7 @@ class TestGlobalStats:
                 status=status,
             )
 
-        stats = global_stats()
+        stats = global_stats(organization)
 
         assert stats["total"] == 4
         assert stats["sent"] == 2

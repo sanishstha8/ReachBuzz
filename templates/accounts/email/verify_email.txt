@@ -1,0 +1,10 @@
+Hello{% if user.first_name %} {{ user.first_name }}{% endif %},
+
+Confirm this address to finish setting up your {{ brand_name }} account:
+
+{{ verify_url }}
+
+The link works once and expires in a few days. If you did not create an
+account, you can ignore this email — nothing will be sent to you again.
+
+-- {{ brand_name }}

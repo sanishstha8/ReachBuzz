@@ -125,44 +125,44 @@ class TestRowParsing:
 
 
 class TestImportConsent:
-    def test_explicit_true_opts_the_contact_in(self, operator) -> None:
-        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,true\n"), user=operator)
+    def test_explicit_true_opts_the_contact_in(self, operator, organization) -> None:
+        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,true\n"), user=operator, organization=organization)
 
         contact = Contact.objects.get(phone_number="+9779800000000")
         assert contact.opted_in is True
         assert contact.opt_in_source == OptInSource.CSV_IMPORT
         assert contact.opt_in_at is not None
 
-    def test_explicit_false_imports_opted_out(self, operator) -> None:
-        import_contacts_from_file(upload(HEADER + "Sita,+9779811111111,false\n"), user=operator)
+    def test_explicit_false_imports_opted_out(self, operator, organization) -> None:
+        import_contacts_from_file(upload(HEADER + "Sita,+9779811111111,false\n"), user=operator, organization=organization)
 
         contact = Contact.objects.get(phone_number="+9779811111111")
         assert contact.opted_in is False
 
-    def test_missing_consent_column_never_opts_anyone_in(self, operator) -> None:
+    def test_missing_consent_column_never_opts_anyone_in(self, operator, organization) -> None:
         """A spreadsheet of numbers is not permission to message them."""
         result = import_contacts_from_file(
-            upload("name,phone_number\nAarav,+9779800000000\nSita,+9779811111111\n"), user=operator
+            upload("name,phone_number\nAarav,+9779800000000\nSita,+9779811111111\n"), user=operator, organization=organization
         )
 
         assert Contact.objects.filter(opted_in=True).count() == 0
         assert result.imported_count == 2
         assert result.not_opted_in_count == 2
 
-    def test_unrecognised_consent_value_does_not_opt_in(self, operator) -> None:
-        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,maybe\n"), user=operator)
+    def test_unrecognised_consent_value_does_not_opt_in(self, operator, organization) -> None:
+        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,maybe\n"), user=operator, organization=organization)
         assert Contact.objects.get(phone_number="+9779800000000").opted_in is False
 
-    def test_contacts_without_consent_are_excluded_from_the_eligible_set(self, operator) -> None:
+    def test_contacts_without_consent_are_excluded_from_the_eligible_set(self, operator, organization) -> None:
         import_contacts_from_file(
-            upload(HEADER + "Yes,+9779800000000,true\nNo,+9779811111111,false\n"), user=operator
+            upload(HEADER + "Yes,+9779800000000,true\nNo,+9779811111111,false\n"), user=operator, organization=organization
         )
         assert Contact.objects.count() == 2
         assert Contact.objects.eligible().count() == 1
 
 
 class TestImportOutcomes:
-    def test_reports_the_expected_summary(self, operator, make_contact) -> None:
+    def test_reports_the_expected_summary(self, operator, make_contact, organization) -> None:
         make_contact("Already here", "+9779822222222")
 
         result = import_contacts_from_file(
@@ -175,7 +175,7 @@ class TestImportOutcomes:
                 + "Broken,bad-number,true\n"           # invalid
                 + ",+9779833333333,true\n"             # invalid: no name
             ),
-            user=operator,
+            user=operator, organization=organization,
         )
 
         assert result.total_rows == 6
@@ -185,9 +185,9 @@ class TestImportOutcomes:
         assert result.not_opted_in_count == 1
         assert result.status == ImportStatus.COMPLETED
 
-    def test_rejected_rows_are_recorded_with_reasons(self, operator) -> None:
+    def test_rejected_rows_are_recorded_with_reasons(self, operator, organization) -> None:
         result = import_contacts_from_file(
-            upload(HEADER + "Broken,bad-number,true\n"), user=operator
+            upload(HEADER + "Broken,bad-number,true\n"), user=operator, organization=organization
         )
 
         row = result.rows.get(outcome=RowOutcome.INVALID)
@@ -195,32 +195,32 @@ class TestImportOutcomes:
         assert "bad-number" in row.error_message
         assert row.raw_data["name"] == "Broken"
 
-    def test_duplicate_rows_link_to_the_existing_contact(self, operator, make_contact) -> None:
+    def test_duplicate_rows_link_to_the_existing_contact(self, operator, make_contact, organization) -> None:
         existing = make_contact("Existing", "+9779800000000")
 
         result = import_contacts_from_file(
-            upload(HEADER + "Copy,+9779800000000,true\n"), user=operator
+            upload(HEADER + "Copy,+9779800000000,true\n"), user=operator, organization=organization
         )
 
         row = result.rows.get(outcome=RowOutcome.DUPLICATE)
         assert row.contact == existing
 
-    def test_existing_contacts_are_not_modified_by_default(self, operator, make_contact) -> None:
+    def test_existing_contacts_are_not_modified_by_default(self, operator, make_contact, organization) -> None:
         existing = make_contact("Original Name", "+9779800000000", opted_in=False)
 
-        import_contacts_from_file(upload(HEADER + "New Name,+9779800000000,true\n"), user=operator)
+        import_contacts_from_file(upload(HEADER + "New Name,+9779800000000,true\n"), user=operator, organization=organization)
 
         existing.refresh_from_db()
         assert existing.name == "Original Name"
         assert existing.opted_in is False
 
-    def test_update_existing_refreshes_the_contact(self, operator, make_contact) -> None:
+    def test_update_existing_refreshes_the_contact(self, operator, make_contact, organization) -> None:
         existing = make_contact("Original Name", "+9779800000000")
 
         result = import_contacts_from_file(
             upload(HEADER + "New Name,+9779800000000,true\n"),
             update_existing=True,
-            user=operator,
+            user=operator, organization=organization,
         )
 
         existing.refresh_from_db()
@@ -229,14 +229,14 @@ class TestImportOutcomes:
         assert result.updated_count == 1
         assert result.imported_count == 0
 
-    def test_update_never_revokes_existing_consent(self, operator, make_contact) -> None:
+    def test_update_never_revokes_existing_consent(self, operator, make_contact, organization) -> None:
         """Withdrawal is a deliberate act, not a side effect of a spreadsheet."""
         existing = make_contact("Consenting", "+9779800000000", opted_in=True)
 
         import_contacts_from_file(
             upload(HEADER + "Consenting,+9779800000000,false\n"),
             update_existing=True,
-            user=operator,
+            user=operator, organization=organization,
         )
 
         existing.refresh_from_db()
@@ -244,74 +244,74 @@ class TestImportOutcomes:
 
 
 class TestImportGroups:
-    def test_imported_contacts_join_the_target_group(self, operator, group) -> None:
+    def test_imported_contacts_join_the_target_group(self, operator, group, organization) -> None:
         import_contacts_from_file(
             upload(HEADER + "Aarav,+9779800000000,true\nSita,+9779811111111,true\n"),
             target_group=group,
-            user=operator,
+            user=operator, organization=organization,
         )
         assert group.memberships.count() == 2
 
-    def test_group_is_recorded_on_the_import(self, operator, group) -> None:
+    def test_group_is_recorded_on_the_import(self, operator, group, organization) -> None:
         result = import_contacts_from_file(
-            upload(HEADER + "Aarav,+9779800000000,true\n"), target_group=group, user=operator
+            upload(HEADER + "Aarav,+9779800000000,true\n"), target_group=group, user=operator, organization=organization
         )
         assert result.target_group == group
 
 
 class TestImportRecordKeeping:
-    def test_import_is_audited_with_its_counts(self, operator) -> None:
-        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,true\n"), user=operator)
+    def test_import_is_audited_with_its_counts(self, operator, organization) -> None:
+        import_contacts_from_file(upload(HEADER + "Aarav,+9779800000000,true\n"), user=operator, organization=organization)
 
         entry = AuditLog.objects.get(action=AuditAction.CONTACTS_IMPORTED)
         assert entry.user == operator
         assert entry.metadata["imported"] == 1
 
-    def test_file_metadata_is_stored(self, operator) -> None:
+    def test_file_metadata_is_stored(self, operator, organization) -> None:
         result = import_contacts_from_file(
-            upload(HEADER + "Aarav,+9779800000000,true\n", name="june-list.csv"), user=operator
+            upload(HEADER + "Aarav,+9779800000000,true\n", name="june-list.csv"), user=operator, organization=organization
         )
         assert result.file_name == "june-list.csv"
         assert result.file_size > 0
         assert result.started_at is not None
         assert result.finished_at is not None
 
-    def test_a_failed_import_keeps_its_failed_status(self, operator) -> None:
+    def test_a_failed_import_keeps_its_failed_status(self, operator, organization) -> None:
         """The FAILED status must survive the exception, not roll back with it."""
         with pytest.raises(CsvImportError):
-            import_contacts_from_file(upload("wrong,headers\na,b\n"), user=operator)
+            import_contacts_from_file(upload("wrong,headers\na,b\n"), user=operator, organization=organization)
 
         record = ContactImport.objects.get()
         assert record.status == ImportStatus.FAILED
         assert record.error_message
 
-    def test_nothing_is_written_when_the_file_is_unusable(self, operator) -> None:
+    def test_nothing_is_written_when_the_file_is_unusable(self, operator, organization) -> None:
         with pytest.raises(CsvImportError):
-            import_contacts_from_file(upload("wrong,headers\na,b\n"), user=operator)
+            import_contacts_from_file(upload("wrong,headers\na,b\n"), user=operator, organization=organization)
         assert Contact.objects.count() == 0
 
 
 class TestImportScale:
     def test_five_hundred_rows_import_in_a_bounded_number_of_queries(
-        self, operator, django_assert_max_num_queries
+        self, operator, django_assert_max_num_queries, organization
     ) -> None:
         """Row-at-a-time queries would make a 1,000-contact import unusable."""
         body = "".join(f"Contact {i},+97798{i:08d},true\n" for i in range(500))
 
         # A fixed query budget regardless of row count: the importer batches.
         with django_assert_max_num_queries(15):
-            result = import_contacts_from_file(upload(HEADER + body), user=operator)
+            result = import_contacts_from_file(upload(HEADER + body), user=operator, organization=organization)
 
         assert result.imported_count == 500
         assert Contact.objects.eligible().count() == 500
 
     def test_query_count_does_not_grow_with_row_count(
-        self, operator, django_assert_max_num_queries
+        self, operator, django_assert_max_num_queries, organization
     ) -> None:
         """Guards against a regression to per-row queries."""
         body = "".join(f"Contact {i},+97798{i:08d},true\n" for i in range(1000))
 
         with django_assert_max_num_queries(15):
-            result = import_contacts_from_file(upload(HEADER + body), user=operator)
+            result = import_contacts_from_file(upload(HEADER + body), user=operator, organization=organization)
 
         assert result.imported_count == 1000

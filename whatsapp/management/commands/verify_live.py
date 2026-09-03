@@ -166,6 +166,24 @@ class Command(BaseCommand):
 
         return self.report(OK, "Credentials", "All META_* settings are present.")
 
+    def _organization(self):
+        """
+        Whose templates to sync into.
+
+        A command line has no session, so this takes the first active
+        organization — unambiguous while a deployment has one, and the single
+        place to add a --organization flag when that stops being true.
+        """
+        from organizations.models import Organization
+
+        organization = Organization.objects.active().order_by("created_at").first()
+        if organization is None:
+            raise CommandError(
+                "No active organization exists to sync templates into. "
+                "Create one before running this."
+            )
+        return organization
+
     def check_pipeline(self) -> str:
         """A registered sender is not a reachable queue; this asks about both."""
         from whatsapp.health import pipeline_status
@@ -206,7 +224,7 @@ class Command(BaseCommand):
 
         try:
             if sync:
-                count = sync_templates_from_provider()
+                count = sync_templates_from_provider(organization=self._organization())
                 approved = MessageTemplate.objects.filter(status="approved").count()
                 return self.report(
                     OK, "Templates", f"Synced {count} from Meta; {approved} approved."

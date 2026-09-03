@@ -1,4 +1,4 @@
-# ReBuzz — Business Messaging & Automation Platform
+# ReachBuzz — Business Messaging & Automation Platform
 
 [![CI](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml/badge.svg)](https://github.com/sanishstha8/ReachBuzz/actions/workflows/ci.yml)
 
@@ -42,6 +42,7 @@ Business Platform Cloud API**.
 21. [Dashboard, monitoring and reports](#21-dashboard-monitoring-and-reports)
 22. [Meta Cloud API integration](#22-meta-cloud-api-integration)
 23. [Security posture](#23-security-posture)
+24. [The landing page](#24-the-landing-page)
 
 ---
 
@@ -61,6 +62,7 @@ permissions and policies of the connected Meta WhatsApp Business account.
 
 | Area | Capability |
 |---|---|
+| Landing page | Public marketing page at `/` — features, how it works, pricing, FAQ and contact |
 | Authentication | Email sign-in, session security, role-based authorization (Administrator / Operator / Viewer), CSRF protection, sign-in audit trail |
 | Contacts | CRUD, search, filter, pagination, E.164 normalization, duplicate detection, consent tracking, per-contact message history |
 | CSV import | Validated upload, per-row error reporting, duplicate detection, explicit-consent-only opt-in |
@@ -123,6 +125,7 @@ Meta webhook ──▶ signature check ──▶ persist raw event ──▶ 200
 | `messaging` | Per-recipient `Message` records, status events, statistics |
 | `whatsapp` | Provider abstraction, templates, Celery send tasks, webhook endpoint |
 | `dashboard` | Aggregate statistics, monitoring pages, reporting API and CSV exports |
+| `pages` | The public landing page — the only unauthenticated HTML |
 
 The app is named `messaging`, not `messages`, to avoid shadowing `django.contrib.messages`.
 
@@ -259,7 +262,8 @@ inbound webhook processing:
 python manage.py runserver
 ```
 
-- Dashboard: <http://127.0.0.1:8000/>
+- Landing page: <http://127.0.0.1:8000/> (public)
+- Dashboard: <http://127.0.0.1:8000/dashboard/>
 - Sign-in: <http://127.0.0.1:8000/accounts/login/>
 - Django admin: <http://127.0.0.1:8000/admin/>
 - API documentation: <http://127.0.0.1:8000/api/docs/>
@@ -1054,3 +1058,33 @@ instead of a 500.
 - **`LoginView.redirect_authenticated_user` is on**, which Django notes lets another site
   detect whether a visitor is signed in here by requesting an image URL. Harmless for a
   private internal tool; worth knowing if this is ever exposed more widely.
+
+---
+
+## 24. The landing page
+
+A public marketing page lives at `/`; the operator dashboard moved to
+`/dashboard/`. Nothing else changed — every internal link resolves by URL name, so
+the move touched no other template.
+
+It is the only unauthenticated HTML in the project, and it is held to the same
+standard as the rest of the application: **it may not claim a capability the system
+does not have.**
+
+- **Every link resolves.** The reference design linked to a blog, a help centre and a
+  refund policy. None of those exist here, so none of them are linked. A test walks
+  every anchor on the page and fails on a 404.
+- **No price is invented.** `PRICING_TIERS` in `pages/views.py` carries `price = None`
+  until someone sets a real figure, and a tier without one renders "Pricing on request".
+  Set the `price` field to publish real numbers; the layout is already built for them.
+- **The primary call to action is "Request access", not "Sign up".** There is no
+  self-service registration in this system — accounts are created by an administrator,
+  and the sign-in page says "Authorized operators only". A "Get started free" button
+  would be promising a flow that does not exist.
+- **The dashboard preview is labelled as sample data.** It is a mock built in markup
+  rather than a screenshot, so it stays sharp and cannot go stale against a redesign.
+- **`SUPPORT_EMAIL` gates the contact card.** With no address configured the card is
+  omitted entirely rather than showing configuration advice to a visitor.
+
+Copy lives as data at the top of `pages/views.py` — features, steps, tiers and FAQ are
+plain dataclasses, so editing the page is editing a list, not hunting through markup.

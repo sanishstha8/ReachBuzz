@@ -22,6 +22,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from core.models import BaseModel
+from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 
 # Matches Meta's {{1}} positional placeholders and {{name}} named ones alike.
 VARIABLE_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_]+)\s*\}\}")
@@ -57,7 +58,7 @@ class Usability:
     reason: str = ""
 
 
-class MessageTemplateQuerySet(models.QuerySet):
+class MessageTemplateQuerySet(OrganizationScopedQuerySet):
     def approved(self) -> MessageTemplateQuerySet:
         return self.filter(source=TemplateSource.SYNCED, status=TemplateStatus.APPROVED)
 
@@ -77,7 +78,7 @@ class MessageTemplateQuerySet(models.QuerySet):
         return self.approved()
 
 
-class MessageTemplate(BaseModel):
+class MessageTemplate(OrganizationOwnedModel, BaseModel):
     """A WhatsApp message template and its variable placeholders."""
 
     name = models.CharField(

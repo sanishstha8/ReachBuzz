@@ -23,8 +23,10 @@ def opted_out_contact(make_contact) -> Contact:
 
 
 @pytest.fixture
-def group(db) -> ContactGroup:
-    return ContactGroup.objects.create(name="Newsletter", description="Monthly updates")
+def group(db, organization) -> ContactGroup:
+    return ContactGroup.objects.create(
+        name="Newsletter", description="Monthly updates", organization=organization
+    )
 
 
 @pytest.fixture

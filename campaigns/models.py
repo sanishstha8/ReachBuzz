@@ -15,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 
 from contacts.models import ContactGroup
 from core.models import BaseModel
+from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 from whatsapp.models import MessageTemplate
 
 
@@ -76,7 +77,7 @@ class VariableSource(models.TextChoices):
     LITERAL = "literal", _("Fixed text")
 
 
-class CampaignQuerySet(models.QuerySet):
+class CampaignQuerySet(OrganizationScopedQuerySet):
     def active(self) -> CampaignQuerySet:
         return self.filter(status__in=[CampaignStatus.PROCESSING, CampaignStatus.PAUSED])
 
@@ -90,7 +91,7 @@ class CampaignQuerySet(models.QuerySet):
         return self.filter(models.Q(name__icontains=term) | models.Q(description__icontains=term))
 
 
-class Campaign(BaseModel):
+class Campaign(OrganizationOwnedModel, BaseModel):
     name = models.CharField(max_length=150, db_index=True)
     description = models.TextField(blank=True)
 

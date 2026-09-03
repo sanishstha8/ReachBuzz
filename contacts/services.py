@@ -73,6 +73,7 @@ def create_contact(
     opt_in_source: str = "",
     notes: str = "",
     groups: list[ContactGroup] | None = None,
+    organization=None,
     user=None,
     request: HttpRequest | None = None,
     default_region: str | None = None,
@@ -99,6 +100,7 @@ def create_contact(
         email=(email or "").strip(),
         status=status,
         notes=notes or "",
+        organization=organization,
         created_by=user,
     )
 
@@ -106,7 +108,7 @@ def create_contact(
         contact.opt_in(opt_in_source or OptInSource.MANUAL)
 
     try:
-        contact.full_clean(exclude=["created_by"])
+        contact.full_clean(exclude=["created_by", "organization"])
         contact.save()
     except IntegrityError as exc:  # pragma: no cover - guarded by find_duplicate
         raise ConflictError(f"A contact with the phone number {e164} already exists.") from exc

@@ -13,6 +13,7 @@ import csv
 from datetime import timedelta
 
 import pytest
+from django.conf import settings
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
@@ -223,7 +224,9 @@ class TestCampaignRecipientsReport:
             reverse("dashboard:campaign-recipients-report", kwargs={"pk": campaign.pk})
         )
 
-        assert 'filename="rebuzz-campaign-q3-promo-2-recipients.csv"' in (
+        # The prefix is slugify(SITE_NAME), so this follows a rename.
+        prefix = reports.filename_prefix(settings.SITE_NAME)
+        assert f'filename="{prefix}-campaign-q3-promo-2-recipients.csv"' in (
             response["Content-Disposition"]
         )
 
@@ -250,7 +253,8 @@ class TestResponse:
 
         disposition = response["Content-Disposition"]
         assert disposition.startswith("attachment;")
-        assert f"rebuzz-campaigns-{period.slug}.csv" in disposition
+        prefix = reports.filename_prefix(settings.SITE_NAME)
+        assert f"{prefix}-campaigns-{period.slug}.csv" in disposition
 
     def test_it_is_never_cached(self, auth_client) -> None:
         """The file is a snapshot of live data; a cached copy goes stale at once."""

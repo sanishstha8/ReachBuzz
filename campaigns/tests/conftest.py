@@ -8,5 +8,7 @@ from contacts.models import ContactGroup
 
 
 @pytest.fixture
-def group(db) -> ContactGroup:
-    return ContactGroup.objects.create(name="Newsletter", description="Monthly updates")
+def group(db, organization) -> ContactGroup:
+    return ContactGroup.objects.create(
+        name="Newsletter", description="Monthly updates", organization=organization
+    )

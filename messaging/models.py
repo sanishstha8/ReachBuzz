@@ -18,6 +18,7 @@ from django.utils.translation import gettext_lazy as _
 from campaigns.models import Campaign, CampaignMessageType
 from contacts.models import Contact
 from core.models import BaseModel, TimeStampedModel
+from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 from whatsapp.models import MessageTemplate
 
 
@@ -54,7 +55,7 @@ TERMINAL_STATUSES = frozenset(
 CLAIMABLE_STATUSES = frozenset({MessageStatus.PENDING, MessageStatus.QUEUED})
 
 
-class MessageQuerySet(models.QuerySet):
+class MessageQuerySet(OrganizationScopedQuerySet):
     def in_flight(self) -> MessageQuerySet:
         return self.filter(status__in=IN_FLIGHT_STATUSES)
 
@@ -68,7 +69,7 @@ class MessageQuerySet(models.QuerySet):
         return self.filter(status__in=[MessageStatus.DELIVERED, MessageStatus.READ])
 
 
-class Message(BaseModel):
+class Message(OrganizationOwnedModel, BaseModel):
     """A single outbound WhatsApp message and everything known about it."""
 
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="messages")

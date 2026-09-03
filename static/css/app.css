@@ -547,10 +547,9 @@ pre {
    -------------------------------------------------------------------------- */
 
 :root {
-  --viz-read: #0a5a4f;
-  --viz-delivered: #12806f;
-  --viz-sent: #34a294;
-  --viz-pending: #6bbcaf;
+  --viz-delivered: #0e8f5b;
+  --viz-sent: #2a78d6;
+  --viz-pending: #8b97a5;
   --viz-failed: #d03b3b;
 }
 
@@ -580,6 +579,15 @@ pre {
 .viz__axis {
   stroke: #cbd2da;
   stroke-width: 1;
+}
+
+/* The value printed on a column's cap. Ink, never the series colour: the
+   coloured mark beside it already carries the identity. */
+.viz__value {
+  font-size: 11px;
+  font-weight: 650;
+  fill: var(--app-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .viz__hit {

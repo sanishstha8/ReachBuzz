@@ -66,3 +66,6 @@ desktop.ini
 *.csv
 !sample_contacts.csv
 !docs/**/*.csv
+
+# Claude Code personal settings (permissions, local overrides)
+.claude/settings.local.json

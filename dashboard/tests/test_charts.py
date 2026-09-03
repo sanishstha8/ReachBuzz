@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from dashboard import charts
-from dashboard.services import BUCKETS, DayActivity
+from dashboard.services import DayActivity
 
 
 def _days(count: int, **counts: int) -> list[DayActivity]:
@@ -82,9 +82,9 @@ class TestStackedColumnChart:
 
         assert chart.has_data is False
         assert chart.columns == []
-        # The legend still lists every series, so the reader knows what would
+        # The legend still lists every band, so the reader knows what would
         # have been plotted.
-        assert len(chart.legend) == len(BUCKETS)
+        assert len(chart.legend) == len(charts.SERIES)
 
     def test_segment_heights_are_proportional_to_their_values(self) -> None:
         chart = charts.stacked_column_chart(_days(1, delivered=3, failed=1))
@@ -123,12 +123,12 @@ class TestStackedColumnChart:
         """
         Rounding an interior segment would leave a notch above the one below.
         """
-        chart = charts.stacked_column_chart(_days(1, read=5, delivered=5, failed=5))
+        chart = charts.stacked_column_chart(_days(1, delivered=5, sent=5, failed=5))
         segments = {segment.key: segment.path for segment in chart.columns[0].segments}
 
         assert "Q" in segments["failed"]
-        assert "Q" not in segments["read"]
         assert "Q" not in segments["delivered"]
+        assert "Q" not in segments["sent"]
 
     def test_the_table_view_carries_every_bucket_including_the_empty_ones(self) -> None:
         """
@@ -197,22 +197,90 @@ class TestStackedColumnChart:
                 assert segment.y + segment.height <= chart.plot_bottom + 0.01
 
     def test_the_description_names_every_non_empty_series(self) -> None:
-        chart = charts.stacked_column_chart(_days(1, read=2, failed=1))
+        chart = charts.stacked_column_chart(_days(1, delivered=2, failed=1))
         description = chart.columns[0].description
 
-        assert "Read 2" in description
+        assert "Delivered 2" in description
         assert "Failed 1" in description
         assert "Sent" not in description
 
     def test_the_stack_sits_on_the_baseline_and_grows_upwards(self) -> None:
-        chart = charts.stacked_column_chart(_days(1, read=2, failed=2))
+        chart = charts.stacked_column_chart(_days(1, delivered=2, failed=2))
         segments = {segment.key: segment for segment in chart.columns[0].segments}
 
-        # Read is the darkest step of the ramp and anchors the column; failures
-        # ride on top, where a bad day shows along the skyline.
-        assert segments["read"].y > segments["failed"].y
-        bottom = segments["read"].y + segments["read"].height
+        # The good outcome anchors the column, where it is easiest to compare;
+        # failures ride on top, where a bad day shows along the skyline.
+        assert segments["delivered"].y > segments["failed"].y
+        bottom = segments["delivered"].y + segments["delivered"].height
         assert abs(bottom - chart.plot_bottom) <= charts.SEGMENT_GAP
+
+
+class TestFourBands:
+    """
+    The data layer keeps five disjoint buckets; the chart draws four.
+
+    Read folds into delivered because a read message was necessarily
+    delivered, and because four steps of one hue turned out to be four shades
+    of the same colour — the validator measured read against delivered at
+    ΔE 12.0, under the floor at which two colours can be told apart at all.
+    """
+
+    def test_read_is_drawn_as_delivered(self) -> None:
+        chart = charts.stacked_column_chart(_days(1, read=3, delivered=2))
+        segments = {segment.key: segment.value for segment in chart.columns[0].segments}
+
+        assert segments == {"delivered": 5}
+
+    def test_the_total_still_counts_every_message(self) -> None:
+        chart = charts.stacked_column_chart(_days(1, read=3, delivered=2, sent=1, failed=1))
+
+        assert chart.columns[0].total == 7
+        assert chart.total == 7
+
+    def test_the_legend_names_four_bands(self) -> None:
+        chart = charts.stacked_column_chart(_days(1, read=1, delivered=1, sent=1, failed=1))
+
+        assert [item.label for item in chart.legend] == [
+            "Delivered",
+            "Sent",
+            "Pending",
+            "Failed",
+        ]
+
+    def test_pending_gathers_everything_still_in_flight(self) -> None:
+        chart = charts.stacked_column_chart(_days(1, pending=4))
+        assert chart.columns[0].segments[0].key == "pending"
+
+
+class TestValueLabels:
+    def test_a_quiet_period_prints_its_totals(self) -> None:
+        """Few enough columns to label, so the reader needs no tooltip at all."""
+        chart = charts.stacked_column_chart(_days(5, delivered=7))
+
+        labelled = [column for column in chart.columns if column.show_value]
+        assert len(labelled) == 5
+        assert labelled[0].value_text == "7"
+
+    def test_a_busy_period_does_not_label_every_column(self) -> None:
+        """A number on every bar is chaos and goes unread."""
+        chart = charts.stacked_column_chart(_days(40, delivered=7))
+
+        assert not any(column.show_value for column in chart.columns)
+
+    def test_empty_columns_are_never_labelled(self) -> None:
+        activity = _days(4)
+        activity[1] = DayActivity(day=activity[1].day, delivered=5)
+        chart = charts.stacked_column_chart(activity)
+
+        labelled = [column for column in chart.columns if column.show_value]
+        assert [column.value_text for column in labelled] == ["5"]
+
+    def test_the_label_sits_above_the_mark(self) -> None:
+        chart = charts.stacked_column_chart(_days(1, delivered=5))
+        column = chart.columns[0]
+
+        assert column.value_y < column.segments[-1].y
+        assert column.value_y > 0
 
 
 class TestProportions:
@@ -232,3 +300,12 @@ class TestProportions:
         by_key = {part.key: part.value for part in charts.stats_proportions(stats)}
 
         assert by_key == {"pending": 3, "delivered": 1}
+
+    def test_read_folds_into_delivered_here_too(self) -> None:
+        """The mix bar and the chart must not disagree about what they show."""
+        from messaging.services import CampaignStats
+
+        stats = CampaignStats(total=4, read=3, delivered=1)
+        by_key = {part.key: part.value for part in charts.stats_proportions(stats)}
+
+        assert by_key == {"delivered": 4}

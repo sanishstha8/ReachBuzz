@@ -37,6 +37,8 @@ class BaseModel(UUIDPrimaryKeyModel, TimeStampedModel):
 class AuditAction(models.TextChoices):
     """Actions worth keeping a permanent, queryable record of."""
 
+    USER_REGISTERED = "user_registered", "Account registered"
+    EMAIL_VERIFIED = "email_verified", "Email address verified"
     LOGIN = "login", "User logged in"
     LOGIN_FAILED = "login_failed", "Login attempt failed"
     LOGOUT = "logout", "User logged out"

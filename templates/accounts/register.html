@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block body_class %}auth-shell{% endblock %}
+
+{% comment %} Same shell as the sign-in page; only the form differs. {% endcomment %}
+{% block layout %}
+<main id="main-content" class="auth-wrapper">
+  <section class="auth-card" style="max-width: 32rem;" aria-labelledby="registerHeading">
+    <div class="auth-card__brand">
+      <i class="bi bi-whatsapp" aria-hidden="true"></i>
+      <span>{{ brand_name }}</span>
+    </div>
+
+    <h1 id="registerHeading" class="h4 mb-1">Create your account</h1>
+    <p class="text-body-secondary mb-4">
+      Already have one? <a href="{% url 'accounts:login' %}">Sign in</a>.
+    </p>
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'accounts:register' %}" novalidate>
+      {% csrf_token %}
+
+      {% include "accounts/_auth_field.html" with field=form.organization_name %}
+
+      <div class="row g-3">
+        <div class="col-sm-6">
+          {% include "accounts/_auth_field.html" with field=form.first_name wrapper_class="mb-3" %}
+        </div>
+        <div class="col-sm-6">
+          {% include "accounts/_auth_field.html" with field=form.last_name wrapper_class="mb-3" %}
+        </div>
+      </div>
+
+      {% include "accounts/_auth_field.html" with field=form.email %}
+      {% include "accounts/_auth_field.html" with field=form.phone %}
+      {% include "accounts/_auth_field.html" with field=form.password1 %}
+      {% include "accounts/_auth_field.html" with field=form.password2 wrapper_class="mb-4" %}
+
+      <button type="submit" class="btn btn-primary btn-lg w-100">Create account</button>
+    </form>
+
+    <p class="auth-card__footer">
+      Messages are sent through your own WhatsApp Business Account, only to
+      contacts who have opted in.
+    </p>
+  </section>
+</main>
+{% endblock layout %}

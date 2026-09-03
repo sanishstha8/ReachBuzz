@@ -70,6 +70,20 @@
     </header>
 
     <main id="main-content" class="app-content">
+      {% if user.is_authenticated and not user.email_verified %}
+        <div class="alert alert-warning d-flex flex-wrap gap-3 align-items-center" role="status">
+          <i class="bi bi-envelope-exclamation fs-5" aria-hidden="true"></i>
+          <div class="flex-grow-1">
+            <strong>Confirm your email address.</strong>
+            We sent a link to {{ user.email }}. Campaigns cannot be sent until you do.
+          </div>
+          <form method="post" action="{% url 'accounts:resend-verification' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-dark">Send it again</button>
+          </form>
+        </div>
+      {% endif %}
+
       {% block content %}{% endblock %}
     </main>
   </div>

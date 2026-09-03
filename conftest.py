@@ -26,6 +26,11 @@ def make_user(db):
     def _make_user(email: str = "operator@example.com", role: str = UserRole.OPERATOR, **extra):
         extra.setdefault("first_name", "Test")
         extra.setdefault("last_name", "User")
+        # Verified unless a test says otherwise. Sending is gated on a
+        # confirmed address, and almost no test is about that gate — leaving it
+        # false by default would make every launch test fail for a reason it
+        # was not written to check. Pass email_verified=False to exercise it.
+        extra.setdefault("email_verified", True)
         return User.objects.create_user(email=email, password=TEST_PASSWORD, role=role, **extra)
 
     return _make_user

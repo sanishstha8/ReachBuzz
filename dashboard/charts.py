@@ -6,16 +6,28 @@ inline SVG. Rather than compute coordinates inside a Django template — where
 arithmetic is painful and untestable — every number the SVG needs is worked out
 here and handed over as plain data. The template only iterates.
 
-**Colour.** The message lifecycle is an ordered sequence (pending → sent →
-delivered → read), so it takes a single-hue *ordinal* ramp in the product's
-teal rather than five unrelated categorical hues: the reader sees the order in
-the colour. ``failed`` is not a stage of that sequence but a state, so it takes
-the reserved critical red and sits apart from the ramp. The ramp was validated
-against the white card surface (monotone lightness, adjacent ΔL ≥ 0.06,
-light end 2.23:1 contrast), and the one place the ramp meets the status colour
-— pending against failed — clears the colour-vision separation floor with
-ΔE 18.0. Because the lightest step is below 3:1 against the surface, every
-chart ships a table view; the values are never colour-only.
+**Four bands, not five.** The data layer keeps five disjoint buckets, and the
+API and the CSV exports still report all five. The chart folds ``read`` into
+``delivered``, because a read message was necessarily delivered and the chart's
+question is *how much went out and did it land*. How much of it was read is a
+different question, and the read-rate tile answers it better than a fifth
+stacked band ever did.
+
+This started as a single-hue ordinal ramp — the lifecycle is an ordered
+sequence, so in principle the reader should see the order in the colour. In
+practice four steps of one hue were four shades of teal, and the validator
+agreed: read against delivered measured ΔE 12.0, below the 15 floor at which
+colours are "hard to tell apart even with full colour vision". An ordering the
+reader cannot see is not an ordering.
+
+So the bands are now distinct hues, chosen for what they mean rather than for
+where they sit in a sequence, and validated as a set against the white card
+surface: worst adjacent pair ΔE 16.8 normal vision, 14.2 under simulated
+colour-vision deficiency. ``pending`` is deliberately the one neutral. It means
+*nothing has happened yet*, so it should recede rather than compete for
+attention — it is the one slot that fails the chroma floor on purpose, since
+that floor exists to keep a hue doing identity work and this one is not meant
+to. Both it and the table view are why every chart also prints its totals.
 """
 
 from __future__ import annotations
@@ -25,7 +37,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import date
 
-from dashboard.services import BUCKETS, DayActivity
+from dashboard.services import DayActivity
 
 # -- Palette ----------------------------------------------------------------
 #
@@ -33,12 +45,21 @@ from dashboard.services import BUCKETS, DayActivity
 # red. Text never wears these: labels use the muted ink below.
 
 SERIES_COLOURS: dict[str, str] = {
-    "read": "#0a5a4f",
-    "delivered": "#12806f",
-    "sent": "#34a294",
-    "pending": "#6bbcaf",
-    "failed": "#d03b3b",
+    "delivered": "#0e8f5b",  # green: confirmed on a handset
+    "sent": "#2a78d6",  # blue: the provider took it, nothing has confirmed it
+    "pending": "#8b97a5",  # neutral: nothing has happened yet
+    "failed": "#d03b3b",  # the reserved critical red
 }
+
+# Which data buckets each visible band is made of, bottom of the stack first.
+# The good outcomes sit on the baseline where they are easiest to compare, and
+# failures ride on top, where a bad day shows along the skyline.
+SERIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("delivered", "Delivered", ("read", "delivered")),
+    ("sent", "Sent", ("sent",)),
+    ("pending", "Pending", ("pending",)),
+    ("failed", "Failed", ("failed",)),
+)
 
 # Chart *chrome* — gridlines, axis, tick labels — is styled in app.css, not
 # here. Only the series colours are data: the legend swatches and the tooltip
@@ -67,6 +88,10 @@ CORNER_RADIUS = 4.0
 MAX_COLUMNS = 62
 # At most this many x-axis labels, or they collide.
 MAX_X_LABELS = 10
+# Print the total on a column's cap only while at most this many columns have
+# anything in them. Past that the labels crowd each other and the axis, and
+# the tooltip and the table view carry the values instead.
+MAX_VALUE_LABELS = 12
 
 PLOT_LEFT = float(PAD_LEFT)
 PLOT_RIGHT = float(WIDTH - PAD_RIGHT)
@@ -135,7 +160,8 @@ def bucket_activity(activity: list[DayActivity], *, max_columns: int = MAX_COLUM
                 start=chunk[0].day,
                 end=chunk[-1].day,
                 counts={
-                    bucket: sum(day.value(bucket) for day in chunk) for bucket, _label in BUCKETS
+                    key: sum(day.value(bucket) for day in chunk for bucket in members)
+                    for key, _label, members in SERIES
                 },
             )
         )
@@ -225,6 +251,12 @@ class Column:
     short_label: str
     total: int
     show_label: bool
+    # A value printed on the cap of the column. Only when few enough columns
+    # carry one to stay readable — a number on every bar is chaos and goes
+    # unread, which is the whole reason direct labels work when they are rare.
+    show_value: bool
+    value_text: str
+    value_y: float
     description: str
     # Serialised for the hover/focus tooltip. Built here rather than in the
     # template so the values reach the DOM as data, not as concatenated markup.
@@ -301,15 +333,15 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
     visible along the skyline rather than buried in the middle of the stack.
     """
     buckets = bucket_activity(activity)
-    labels = dict(BUCKETS)
+    labels = {key: label for key, label, _members in SERIES}
 
     totals_by_key = {
-        key: sum(bucket.counts.get(key, 0) for bucket in buckets) for key, _label in BUCKETS
+        key: sum(bucket.counts.get(key, 0) for bucket in buckets) for key, _label, _m in SERIES
     }
     grand_total = sum(totals_by_key.values())
     legend = [
         LegendItem(key=key, label=label, colour=SERIES_COLOURS[key], total=totals_by_key[key])
-        for key, label in BUCKETS
+        for key, label, _members in SERIES
     ]
 
     if not buckets or grand_total == 0:
@@ -330,8 +362,11 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
     ]
 
     slot = PLOT_WIDTH / len(buckets)
-    bar_width = max(1.0, min(MAX_BAR_WIDTH, slot * 0.7))
+    bar_width = max(1.0, min(MAX_BAR_WIDTH, slot * 0.8))
     stride = max(1, math.ceil(len(buckets) / MAX_X_LABELS))
+
+    occupied = [bucket for bucket in buckets if bucket.total]
+    label_values = len(occupied) <= MAX_VALUE_LABELS
 
     columns: list[Column] = []
     for index, bucket in enumerate(buckets):
@@ -340,11 +375,11 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
 
         segments: list[Segment] = []
         # Find the topmost non-empty bucket so only its cap is rounded.
-        stacked_keys = [key for key, _ in BUCKETS if bucket.counts.get(key, 0)]
+        stacked_keys = [key for key, _l, _m in SERIES if bucket.counts.get(key, 0)]
         top_key = stacked_keys[-1] if stacked_keys else None
 
         cursor = PLOT_BOTTOM
-        for key, label in BUCKETS:
+        for key, label, _members in SERIES:
             value = bucket.counts.get(key, 0)
             if not value:
                 continue
@@ -372,7 +407,7 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
 
         parts = [
             f"{labels[key]} {bucket.counts.get(key, 0):,}"
-            for key, _ in BUCKETS
+            for key, _l, _m in SERIES
             if bucket.counts.get(key, 0)
         ]
         columns.append(
@@ -388,6 +423,10 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
                 short_label=bucket.short_label,
                 total=bucket.total,
                 show_label=index % stride == 0 or index == len(buckets) - 1,
+                show_value=label_values and bool(bucket.total),
+                value_text=f"{bucket.total:,}",
+                # Above the cap of the stack, clear of the mark itself.
+                value_y=(segments[-1].y - 6) if segments else PLOT_BOTTOM,
                 description=f"{bucket.label}: {', '.join(parts)}",
                 tooltip_json=json.dumps(
                     {
@@ -399,12 +438,12 @@ def stacked_column_chart(activity: list[DayActivity]) -> StackedColumnChart:
                                 "value": f"{bucket.counts.get(key, 0):,}",
                                 "colour": SERIES_COLOURS[key],
                             }
-                            for key, _ in BUCKETS
+                            for key, _l, _m in SERIES
                             if bucket.counts.get(key, 0)
                         ],
                     }
                 ),
-                table_cells=[bucket.counts.get(key, 0) for key, _ in BUCKETS],
+                table_cells=[bucket.counts.get(key, 0) for key, _l, _m in SERIES],
             )
         )
 
@@ -456,7 +495,7 @@ def proportions(counts: dict[str, int]) -> list[Proportion]:
             percent=round(counts[key] / total * 100, 1),
             colour=SERIES_COLOURS[key],
         )
-        for key, label in BUCKETS
+        for key, label, _members in SERIES
         if counts.get(key)
     ]
 
@@ -465,8 +504,10 @@ def stats_proportions(stats) -> list[Proportion]:
     """``proportions()`` for a :class:`messaging.services.CampaignStats`."""
     return proportions(
         {
-            "read": stats.read,
-            "delivered": stats.delivered,
+            # Read folds into delivered here for the same reason it does in the
+            # chart: a read message was necessarily delivered, and the bar is
+            # about whether the send landed.
+            "delivered": stats.delivered + stats.read,
             "sent": stats.sent,
             "pending": stats.in_flight,
             "failed": stats.failed,

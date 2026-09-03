@@ -44,6 +44,10 @@ Three things here are requirements rather than decoration:
             <path d="{{ segment.path }}" fill="{{ segment.colour }}" />
           {% endfor %}
         </g>
+        {% if column.show_value %}
+          <text x="{{ column.centre_x|floatformat:2 }}" y="{{ column.value_y|floatformat:2 }}"
+                text-anchor="middle" class="viz__value">{{ column.value_text }}</text>
+        {% endif %}
         {% if column.show_label %}
           <text x="{{ column.centre_x|floatformat:2 }}" y="{{ chart.x_label_y }}"
                 text-anchor="middle" class="viz__tick">{{ column.short_label }}</text>

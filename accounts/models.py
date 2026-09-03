@@ -70,7 +70,26 @@ class User(AbstractUser):
         default=UserRole.OPERATOR,
         help_text=_("Determines which actions this user may perform."),
     )
+    phone = models.CharField(
+        _("phone number"),
+        max_length=20,
+        blank=True,
+        help_text=_("Optional. How we reach you about your account, not a messaging number."),
+    )
+
+    # Confirms the address is real and reachable before anything is sent from
+    # it. Deliberately not a login gate — see accounts.views.RegisterView — but
+    # it does gate launching a campaign, because a typo here means a customer
+    # who can never receive the receipts for messages they sent to real people.
+    email_verified = models.BooleanField(default=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
+
+    # AbstractUser already carries `date_joined`, which is the creation
+    # timestamp; adding a second one would be two columns disagreeing sooner
+    # or later. Only the update side is missing.
+    updated_at = models.DateTimeField(auto_now=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
@@ -122,6 +141,19 @@ class User(AbstractUser):
         return self.is_administrator or self.role == UserRole.OPERATOR
 
     # -- Bookkeeping --------------------------------------------------------
+
+    @property
+    def created_at(self):
+        """AbstractUser spells this `date_joined`; the rest of the project does not."""
+        return self.date_joined
+
+    def mark_email_verified(self) -> None:
+        """Idempotent: a link clicked twice is the ordinary case, not an error."""
+        if self.email_verified:
+            return
+        self.email_verified = True
+        self.email_verified_at = timezone.now()
+        self.save(update_fields=["email_verified", "email_verified_at", "updated_at"])
 
     def record_login(self, ip_address: str | None) -> None:
         self.last_login_ip = ip_address

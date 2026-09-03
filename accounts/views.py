@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth import login, update_session_auth_hash
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import PasswordChangeForm
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
+from django.views import View
 from django.views.generic import FormView
 
-from accounts import throttling
-from accounts.forms import EmailAuthenticationForm, ProfileForm
+from accounts import registration, throttling
+from accounts.forms import EmailAuthenticationForm, ProfileForm, RegistrationForm
+from core.audit import record_audit
 from core.mixins import ActiveUserRequiredMixin, PageTitleMixin
+from core.models import AuditAction
 
 logger = logging.getLogger(__name__)
 
@@ -113,3 +117,136 @@ class ProfileView(ActiveUserRequiredMixin, PageTitleMixin, FormView):
                 password_form=password_form,
             )
         )
+
+
+class RegisterView(FormView):
+    """
+    Self-service sign-up.
+
+    The account is usable immediately and the address is confirmed afterwards.
+    Blocking sign-in until a link is clicked strands anyone whose mail is slow
+    or filtered, with nothing to look at and no way to ask for help — whereas
+    the thing verification actually protects against is sending messages from
+    an address nobody can receive replies at, and that is gated at launch
+    instead. See ``campaigns.services.launch_campaign``.
+    """
+
+    template_name = "accounts/register.html"
+    form_class = RegistrationForm
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return redirect("dashboard:home")
+        return super().dispatch(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        """
+        Refuse once this network has created its allowance of accounts.
+
+        Registration is the only unauthenticated endpoint that both writes rows
+        and sends mail to an address the caller chose, which makes it a way to
+        fill the database and a way to point our mail server at somebody who
+        never asked for it. The form comes back with what they typed still in
+        it, because the overwhelmingly likely person to hit this is an office
+        signing colleagues up from one address.
+        """
+        if throttling.signup.is_exceeded(request):
+            logger.warning("Blocked a registration from a throttled address.")
+            messages.error(request, throttling.signup.message())
+            return self.render_to_response(self.get_context_data(form=self.get_form()))
+        return super().post(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["page_title"] = "Create your account"
+        return context
+
+    def form_valid(self, form):
+        data = form.cleaned_data
+        user, organization = registration.register(
+            email=data["email"],
+            password=data["password1"],
+            organization_name=data["organization_name"],
+            first_name=data["first_name"],
+            last_name=data.get("last_name", ""),
+            phone=data.get("phone", ""),
+            request=self.request,
+        )
+        registration.send_verification_email(user, self.request)
+        throttling.signup.record(self.request)
+
+        login(self.request, user, backend="django.contrib.auth.backends.ModelBackend")
+        messages.success(
+            self.request,
+            f"Welcome to {settings.SITE_NAME}. We have sent a link to {user.email} — "
+            "confirm your address to start sending campaigns.",
+        )
+        return redirect("dashboard:home")
+
+
+class VerifyEmailView(View):
+    """Confirms an address from the emailed link."""
+
+    def get(self, request, uidb64: str, token: str):
+        user = registration.verify(uidb64, token)
+
+        if user is None:
+            messages.error(
+                request,
+                "That confirmation link is invalid or has already been used. "
+                "Sign in and request a new one.",
+            )
+            return redirect("accounts:login")
+
+        record_audit(
+            AuditAction.EMAIL_VERIFIED,
+            user=user,
+            request=request,
+            description="Confirmed their email address",
+        )
+        messages.success(request, "Your email address is confirmed. You can now send campaigns.")
+        return redirect("dashboard:home" if request.user.is_authenticated else "accounts:login")
+
+
+class ResendVerificationView(ActiveUserRequiredMixin, View):
+    """
+    Sends the link again, for the ordinary case of it never arriving.
+
+    POST-only: a link that triggers an email on GET can be fired by a prefetch
+    or a scanner.
+    """
+
+    def post(self, request):
+        if request.user.email_verified:
+            messages.info(request, "Your email address is already confirmed.")
+        elif throttling.outbound_email.is_exceeded(request):
+            messages.error(request, throttling.outbound_email.message())
+        else:
+            registration.send_verification_email(request.user, request)
+            throttling.outbound_email.record(request)
+            messages.success(request, f"We have sent another link to {request.user.email}.")
+        return redirect(request.META.get("HTTP_REFERER") or "dashboard:home")
+
+
+class ThrottledPasswordResetView(auth_views.PasswordResetView):
+    """
+    Django's reset view, with a cap on how much mail one network can ask for.
+
+    The form is unauthenticated and mails any address that has an account, so
+    without a limit it is a way to bury a customer's inbox using our mail server
+    and our sending reputation.
+
+    **Counted on every submission, not only the ones that find an account.** A
+    counter that advanced only for real addresses would make the block itself
+    tell an attacker which addresses are registered — undoing the identical
+    response this form goes to the trouble of giving.
+    """
+
+    def post(self, request, *args, **kwargs):
+        if throttling.outbound_email.is_exceeded(request):
+            logger.warning("Blocked a password reset request from a throttled address.")
+            messages.error(request, throttling.outbound_email.message())
+            return self.render_to_response(self.get_context_data(form=self.get_form()))
+
+        throttling.outbound_email.record(request)
+        return super().post(request, *args, **kwargs)

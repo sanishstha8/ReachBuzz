@@ -38,7 +38,7 @@ policy), it is left out rather than pointed at a 404.
 
       <div class="mk-header__actions">
         <a class="mk-btn mk-btn--quiet d-none d-sm-inline-flex" href="{% url 'accounts:login' %}">Sign in</a>
-        <a class="mk-btn mk-btn--primary" href="#contact">Request access</a>
+        <a class="mk-btn mk-btn--primary" href="{% url 'accounts:register' %}">Get started</a>
       </div>
     </div>
   </div>
@@ -68,8 +68,8 @@ policy), it is left out rather than pointed at a 404.
           </p>
 
           <div class="mk-hero__actions">
-            <a class="mk-btn mk-btn--primary mk-btn--lg" href="#contact">
-              Request access <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            <a class="mk-btn mk-btn--primary mk-btn--lg" href="{% url 'accounts:register' %}">
+              Get started free <i class="bi bi-arrow-right" aria-hidden="true"></i>
             </a>
             <a class="mk-btn mk-btn--ghost mk-btn--lg" href="#how-it-works">
               <i class="bi bi-play-circle" aria-hidden="true"></i> See how it works
@@ -282,8 +282,8 @@ policy), it is left out rather than pointed at a 404.
       <div class="mk-section__head">
         <h2 id="contactHeading">Get in touch</h2>
         <p>
-          Accounts are created by an administrator, so the fastest way to start is to
-          tell us what you need.
+          Create an account in a minute, or tell us what you need and we will help you
+          get set up.
         </p>
       </div>
 
@@ -329,8 +329,8 @@ policy), it is left out rather than pointed at a 404.
             </p>
           </div>
           <div class="col-12 col-lg-5 text-lg-end">
-            <a class="mk-btn mk-btn--onDark mk-btn--lg" href="#contact">
-              Request access <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            <a class="mk-btn mk-btn--onDark mk-btn--lg" href="{% url 'accounts:register' %}">
+              Get started free <i class="bi bi-arrow-right" aria-hidden="true"></i>
             </a>
           </div>
         </div>
@@ -372,7 +372,7 @@ policy), it is left out rather than pointed at a 404.
         <h4>Account</h4>
         <ul>
           <li><a href="{% url 'accounts:login' %}">Sign in</a></li>
-          <li><a href="#contact">Request access</a></li>
+          <li><a href="{% url 'accounts:register' %}">Create an account</a></li>
           {% if support_email %}
             <li><a href="mailto:{{ support_email }}">Support</a></li>
           {% endif %}

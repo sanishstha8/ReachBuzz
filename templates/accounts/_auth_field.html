@@ -1,0 +1,18 @@
+{% load ui %}
+{% comment %}
+One form field, styled like the sign-in page's.
+
+Extracted because registration and the two password-reset forms all render the
+same shape, and three copies of it would drift apart the first time one of them
+needed an error style changing.
+{% endcomment %}
+<div class="{{ wrapper_class|default:'mb-3' }}">
+  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {{ field }}
+  {% if field.help_text %}
+    <div class="form-text">{{ field.help_text }}</div>
+  {% endif %}
+  {% if field.errors %}
+    <div class="invalid-feedback d-block">{{ field|field_errors }}</div>
+  {% endif %}
+</div>

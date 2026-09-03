@@ -419,6 +419,21 @@ def launch_campaign(
             f"A {campaign.get_status_display().lower()} campaign cannot be launched."
         )
 
+    # An unconfirmed address is the one account-level thing that blocks a send.
+    # Verification is not a login gate — being locked out of an empty dashboard
+    # helps nobody — but sending to real people from an address that may not
+    # exist is different: the failure notices and the replies would go nowhere.
+    if user is not None and not getattr(user, "email_verified", True):
+        raise ValidationFailed(
+            "Confirm your email address before sending a campaign.",
+            details={
+                "blockers": [
+                    f"We sent a confirmation link to {user.email}. "
+                    "Click it, or request a new one from your profile."
+                ]
+            },
+        )
+
     blockers = validation_blockers(campaign)
     if blockers:
         raise ValidationFailed(

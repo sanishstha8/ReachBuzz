@@ -152,6 +152,17 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_ATTEMPT_LIMIT = env.int("LOGIN_ATTEMPT_LIMIT", default=10)
 LOGIN_ATTEMPT_WINDOW_SECONDS = env.int("LOGIN_ATTEMPT_WINDOW_SECONDS", default=300)
 
+# Registration writes rows and mails an address the caller supplies, so it is
+# both a way to fill the database and a way to point our mail server at someone
+# who never asked for it. Counted per network on accounts actually created.
+SIGNUP_LIMIT = env.int("SIGNUP_LIMIT", default=5)
+SIGNUP_WINDOW_SECONDS = env.int("SIGNUP_WINDOW_SECONDS", default=3600)
+
+# Password reset and re-sending a confirmation link both mail on demand, which
+# makes either one a way to bury an inbox using our sending reputation.
+OUTBOUND_EMAIL_LIMIT = env.int("OUTBOUND_EMAIL_LIMIT", default=5)
+OUTBOUND_EMAIL_WINDOW_SECONDS = env.int("OUTBOUND_EMAIL_WINDOW_SECONDS", default=900)
+
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "dashboard:home"
 LOGOUT_REDIRECT_URL = "accounts:login"

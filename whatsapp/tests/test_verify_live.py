@@ -164,7 +164,7 @@ class TestReadOnlyChecks:
         assert "WARN" in output
         assert "none approved" in output
 
-    def test_sync_writes_the_templates_locally(self, meta, http) -> None:
+    def test_sync_writes_the_templates_locally(self, meta, http, organization) -> None:
         http.add(responses.GET, TEMPLATES_URL, json={"data": [approved_payload()]}, status=200)
 
         run(sync=True)

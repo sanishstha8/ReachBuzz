@@ -62,12 +62,12 @@ class TestAudienceResolution:
         assert list(services.resolve_audience(campaign)) == [consenting]
 
     def test_a_contact_in_two_groups_is_resolved_once(
-        self, make_campaign, make_contact
+        self, make_campaign, make_contact, organization
     ) -> None:
         from contacts.models import ContactGroup
 
-        first = ContactGroup.objects.create(name="A")
-        second = ContactGroup.objects.create(name="B")
+        first = ContactGroup.objects.create(name="A", organization=organization)
+        second = ContactGroup.objects.create(name="B", organization=organization)
         contact = make_contact(opted_in=True)
         GroupMembership.objects.create(group=first, contact=contact)
         GroupMembership.objects.create(group=second, contact=contact)
@@ -476,17 +476,17 @@ class TestFinalization:
 
 
 class TestCreation:
-    def test_create_requires_a_name(self, operator) -> None:
+    def test_create_requires_a_name(self, operator, organization) -> None:
         with pytest.raises(ValidationFailed):
-            services.create_campaign(name="   ", user=operator)
+            services.create_campaign(name="   ", user=operator, organization=organization)
 
-    def test_creation_is_audited(self, operator) -> None:
-        campaign = services.create_campaign(name="Launch", user=operator)
+    def test_creation_is_audited(self, operator, organization) -> None:
+        campaign = services.create_campaign(name="Launch", user=operator, organization=organization)
 
         entry = AuditLog.objects.get(action=AuditAction.CAMPAIGN_CREATED)
         assert entry.object_id == str(campaign.pk)
 
-    def test_new_campaigns_start_as_drafts(self, operator) -> None:
-        campaign = services.create_campaign(name="Launch", user=operator)
+    def test_new_campaigns_start_as_drafts(self, operator, organization) -> None:
+        campaign = services.create_campaign(name="Launch", user=operator, organization=organization)
         assert campaign.status == CampaignStatus.DRAFT
         assert Campaign.objects.editable().count() == 1

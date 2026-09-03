@@ -99,9 +99,9 @@ def stream_csv(filename: str, header: tuple[str, ...], rows: Iterator[list]) -> 
 # ---------------------------------------------------------------------------
 
 
-def campaign_rows(period: ReportPeriod) -> Iterator[list]:
+def campaign_rows(organization, period: ReportPeriod) -> Iterator[list]:
     """One row per campaign launched in the period, with its outcome mix."""
-    for row in services.campaign_performance(period):
+    for row in services.campaign_performance(organization, period):
         stats = row.stats
         yield [
             _text(row.name),
@@ -120,10 +120,11 @@ def campaign_rows(period: ReportPeriod) -> Iterator[list]:
         ]
 
 
-def message_rows(period: ReportPeriod) -> Iterator[list]:
+def message_rows(organization, period: ReportPeriod) -> Iterator[list]:
     """One row per recipient message created in the period."""
     queryset = (
-        Message.objects.filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
+        Message.objects.for_organization(organization)
+        .filter(created_at__gte=period.start_at, created_at__lt=period.end_at)
         .select_related("campaign", "contact")
         .order_by("created_at", "id")
     )
@@ -160,9 +161,9 @@ def _message_rows(queryset) -> Iterator[list]:
         ]
 
 
-def failure_rows(period: ReportPeriod) -> Iterator[list]:
+def failure_rows(organization, period: ReportPeriod) -> Iterator[list]:
     """Distinct provider errors in the period, most frequent first."""
-    for reason in services.failure_reasons(period, limit=200):
+    for reason in services.failure_reasons(organization, period, limit=200):
         yield [
             _text(reason.error_code),
             _text(reason.error_message),
@@ -171,7 +172,7 @@ def failure_rows(period: ReportPeriod) -> Iterator[list]:
         ]
 
 
-def consent_rows(_period: ReportPeriod) -> Iterator[list]:
+def consent_rows(organization, _period: ReportPeriod) -> Iterator[list]:
     """
     The consent register: every contact and the basis on which they may be
     messaged.
@@ -181,7 +182,7 @@ def consent_rows(_period: ReportPeriod) -> Iterator[list]:
     only ever answerable as of now.
     """
     queryset = (
-        Contact.objects.all()
+        Contact.objects.for_organization(organization)
         .prefetch_related("group_memberships__group")
         .order_by("name", "phone_number")
     )
@@ -215,7 +216,7 @@ class ReportSpec:
     label: str
     description: str
     header: tuple[str, ...]
-    build: Callable[[ReportPeriod], Iterator[list]]
+    build: Callable[..., Iterator[list]]
     # False for reports whose subject is current state rather than a period.
     uses_period: bool = True
 

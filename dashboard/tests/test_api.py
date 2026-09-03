@@ -53,21 +53,21 @@ class TestAuthorization:
         assert client.get(reverse(name)).status_code in (401, 403)
 
     @pytest.mark.parametrize("name", ENDPOINTS)
-    def test_reports_cannot_be_written(self, auth_api_client: APIClient, name: str) -> None:
+    def test_reports_cannot_be_written(self, auth_api_client: APIClient, name: str, organization) -> None:
         """A report is derived state; the only way to change it is to send."""
         assert auth_api_client.post(reverse(name), {}).status_code == 405
 
 
 class TestOverviewEndpoint:
     def test_it_reports_the_same_figures_as_the_page(
-        self, auth_api_client: APIClient, launched_campaign, make_message
+        self, auth_api_client: APIClient, launched_campaign, make_message, organization
     ) -> None:
         campaign = launched_campaign()
         make_message(campaign, status=MessageStatus.DELIVERED)
         make_message(campaign, status=MessageStatus.FAILED)
 
         body = auth_api_client.get(reverse("dashboard-api:report-overview")).json()
-        page = services.overview(services.ReportPeriod.last_days(30))
+        page = services.overview(organization, services.ReportPeriod.last_days(30))
 
         assert body["messages"] == page.messages == 2
         assert body["delivery_rate"] == page.delivery_rate

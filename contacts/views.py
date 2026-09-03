@@ -56,7 +56,7 @@ class ContactListView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
 
     def get_queryset(self):
         queryset = (
-            Contact.objects.all()
+            self.scoped(Contact)
             .prefetch_related("group_memberships__group")
             .order_by(self.request.GET.get("sort") or "name")
         )
@@ -96,7 +96,7 @@ class ContactDetailView(ActiveUserRequiredMixin, PageTitleMixin, DetailView):
     active_nav = "contacts"
 
     def get_queryset(self):
-        return Contact.objects.prefetch_related("group_memberships__group")
+        return self.scoped(Contact).prefetch_related("group_memberships__group")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -122,6 +122,7 @@ class ContactCreateView(CapabilityRequiredMixin, PageTitleMixin, CreateView):
     def form_valid(self, form) -> HttpResponse:
         data = form.cleaned_data
         contact = services.create_contact(
+            organization=self.organization,
             name=data["name"],
             phone_number=data["phone_number"],
             email=data.get("email", ""),
@@ -219,7 +220,7 @@ class GroupListView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
     active_nav = "groups"
 
     def get_queryset(self):
-        queryset = ContactGroup.objects.with_counts().order_by("name")
+        queryset = self.scoped(ContactGroup).with_counts().order_by("name")
 
         search = self.request.GET.get("search", "").strip()
         if search:
@@ -264,6 +265,7 @@ class GroupCreateView(CapabilityRequiredMixin, PageTitleMixin, CreateView):
 
     def form_valid(self, form) -> HttpResponse:
         form.instance.created_by = self.request.user
+        form.instance.organization = self.organization
         response = super().form_valid(form)
         messages.success(self.request, f"Group {self.object.name} created.")
         return response
@@ -352,6 +354,7 @@ class ContactImportView(CapabilityRequiredMixin, PageTitleMixin, FormView):
         try:
             contact_import = import_contacts_from_file(
                 form.cleaned_data["file"],
+                organization=self.organization,
                 update_existing=form.cleaned_data.get("update_existing", False),
                 target_group=form.cleaned_data.get("target_group"),
                 user=self.request.user,
@@ -379,7 +382,7 @@ class ContactImportDetailView(ActiveUserRequiredMixin, PageTitleMixin, DetailVie
     active_nav = "contacts"
 
     def get_queryset(self):
-        return ContactImport.objects.select_related("target_group", "uploaded_by")
+        return self.scoped(ContactImport).select_related("target_group", "uploaded_by")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -399,7 +402,7 @@ class ContactImportListView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
     active_nav = "contacts"
 
     def get_queryset(self):
-        return ContactImport.objects.select_related("target_group", "uploaded_by")
+        return self.scoped(ContactImport).select_related("target_group", "uploaded_by")
 
 
 class SampleCsvView(ActiveUserRequiredMixin, TemplateView):

@@ -37,11 +37,12 @@ from core.permissions import CanLaunchCampaigns, CanManageCampaigns
 from messaging.models import Message
 from messaging.serializers import MessageSerializer
 from messaging.services import campaign_stats
+from organizations.scoping import OrganizationScopedViewSetMixin
 
 logger = logging.getLogger(__name__)
 
 
-class CampaignViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
+class CampaignViewSet(OrganizationScopedViewSetMixin, ListOnlyFilterMixin, viewsets.ModelViewSet):
     """CRUD plus the wizard steps and lifecycle actions."""
 
     serializer_class = CampaignSerializer
@@ -53,7 +54,7 @@ class CampaignViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return (
-            Campaign.objects.all()
+            self.scoped(Campaign)
             .select_related("template", "created_by")
             # `audience_groups` for the serializer, `audience_entries__group`
             # for the through-model walkers. Same rows, different paths, and
@@ -68,6 +69,7 @@ class CampaignViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer) -> None:
         campaign = services.create_campaign(
+            organization=self.organization,
             name=serializer.validated_data["name"],
             description=serializer.validated_data.get("description", ""),
             user=self.request.user,

@@ -37,13 +37,32 @@ def operator(make_user):
 
 
 @pytest.fixture
-def viewer(make_user):
-    return make_user("viewer@example.com", UserRole.VIEWER)
+def viewer(make_user, organization):
+    """A read-only user, inside the same tenant as everybody else."""
+    return _join(organization, make_user("viewer@example.com", UserRole.VIEWER))
 
 
 @pytest.fixture
-def administrator(make_user):
-    return make_user("admin@example.com", UserRole.ADMINISTRATOR)
+def administrator(make_user, organization):
+    """
+    An administrator of the *organization*, not of the platform.
+
+    Membership matters as much as the role: a user outside every organization
+    resolves to no tenant, so their writes have nowhere to go — correct
+    behaviour, but not what a role-permission test means to exercise.
+    """
+    return _join(organization, make_user("admin@example.com", UserRole.ADMINISTRATOR))
+
+
+def _join(organization, user, role=None):
+    from organizations.models import OrganizationMember, OrganizationRole
+
+    OrganizationMember.objects.get_or_create(
+        organization=organization,
+        user=user,
+        defaults={"role": role or OrganizationRole.ADMIN},
+    )
+    return user
 
 
 @pytest.fixture
@@ -84,8 +103,15 @@ def other_organization(db, make_user):
 
 
 @pytest.fixture
-def auth_client(operator) -> Client:
-    """Django test client signed in as an operator."""
+def auth_client(operator, organization) -> Client:
+    """
+    Django test client signed in as an operator, inside an organization.
+
+    The organization is not optional: views scope every query to the caller's
+    tenant, so a signed-in user without one sees nothing. Depending on it here
+    means the ordinary test does not have to think about tenancy, while the
+    isolation tests still create a second organization explicitly.
+    """
     client = Client()
     client.force_login(operator)
     return client
@@ -97,7 +123,7 @@ def api_client() -> APIClient:
 
 
 @pytest.fixture
-def auth_api_client(operator) -> APIClient:
+def auth_api_client(operator, organization) -> APIClient:
     client = APIClient()
     client.force_login(operator)
     return client

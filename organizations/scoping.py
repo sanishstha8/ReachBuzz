@@ -52,16 +52,16 @@ class OrganizationOwnedModel(models.Model):
     """
     Base for every model a customer owns.
 
-    Nullable for now: the column is added to tables that already hold rows, and
-    those rows are given an organization by a data migration before the field
-    is tightened. See ``organizations/migrations`` for the three-step retrofit.
+    Required. It was added nullable so the column could be created on tables
+    that already held rows, those rows were given an owner by a data migration,
+    and this is the third step: from here on a row without a tenant cannot be
+    saved at all. An unowned row is invisible to every scoped query, which
+    makes it a silent data-loss bug rather than a visible one.
     """
 
     organization = models.ForeignKey(
         Organization,
         on_delete=models.CASCADE,
-        null=True,
-        blank=True,
         related_name="%(class)ss",
         db_index=True,
     )
@@ -135,8 +135,27 @@ class OrganizationRequiredMixin:
 
         return super().dispatch(request, *args, **kwargs)
 
+    def scoped(self, model):
+        """
+        This request's rows of ``model``, and no others.
+
+        Views that build their own queryset start here instead of at
+        ``Model.objects``. Spelling the scope at the call site is deliberate:
+        a security filter you can see in the method you are reading beats one
+        applied invisibly further up an inheritance chain, and these views all
+        define ``get_queryset`` themselves, so a wrapping mixin could never
+        intercept them anyway.
+        """
+        return model.objects.for_organization(self.organization)
+
     def get_queryset(self):
-        """Scope whatever the view was going to fetch."""
+        """
+        Scope whatever the view was going to fetch.
+
+        A safety net for views that declare ``model = X`` and never override
+        this. Views with their own ``get_queryset`` shadow it, which is why
+        they call :meth:`scoped` instead.
+        """
         queryset = super().get_queryset()
         if hasattr(queryset, "for_organization"):
             return queryset.for_organization(self.organization)
@@ -159,13 +178,33 @@ class OrganizationObjectMixin(OrganizationRequiredMixin):
         return obj
 
 
-class OrganizationScopedViewSetMixin:
-    """The DRF equivalent. Same rule, same failure mode."""
+class OrganizationAwareMixin:
+    """
+    ``self.organization`` and ``self.scoped()`` for any DRF view.
+
+    Split out from the viewset mixin because plain ``APIView`` subclasses need
+    the same two things and have no queryset to scope — the CSV import endpoint
+    and the statistics endpoints among them, and an aggregate that counts every
+    tenant's rows leaks just as surely as a list that returns them.
+    """
 
     def get_organization(self) -> Organization | None:
         if not hasattr(self, "_organization"):
             self._organization = organization_for(self.request.user)
         return self._organization
+
+    @property
+    def organization(self) -> Organization | None:
+        """Named as on the HTML mixin, so ``scoped()`` reads the same either side."""
+        return self.get_organization()
+
+    def scoped(self, model):
+        """This request's rows of ``model``. See the HTML mixin for the reasoning."""
+        return model.objects.for_organization(self.get_organization())
+
+
+class OrganizationScopedViewSetMixin(OrganizationAwareMixin):
+    """The viewset form: additionally scopes the queryset and stamps creates."""
 
     def get_queryset(self):
         queryset = super().get_queryset()

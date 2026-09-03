@@ -19,6 +19,7 @@ from messaging.serializers import (
     MessageSerializer,
 )
 from messaging.services import global_stats
+from organizations.scoping import OrganizationAwareMixin, OrganizationScopedViewSetMixin
 
 
 class MessageFilter(django_filters.FilterSet):
@@ -35,7 +36,7 @@ class MessageFilter(django_filters.FilterSet):
         return queryset.failed() if value else queryset
 
 
-class MessageViewSet(ListOnlyFilterMixin, viewsets.ReadOnlyModelViewSet):
+class MessageViewSet(OrganizationScopedViewSetMixin, ListOnlyFilterMixin, viewsets.ReadOnlyModelViewSet):
     """
     Message state is owned by the sending worker and the provider's webhooks,
     so this API is read-only by design.
@@ -49,7 +50,7 @@ class MessageViewSet(ListOnlyFilterMixin, viewsets.ReadOnlyModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        queryset = Message.objects.select_related("campaign", "contact", "template")
+        queryset = self.scoped(Message).select_related("campaign", "contact", "template")
         if self.action == "retrieve":
             return queryset.prefetch_related("status_events")
         return queryset
@@ -58,11 +59,11 @@ class MessageViewSet(ListOnlyFilterMixin, viewsets.ReadOnlyModelViewSet):
         return MessageDetailSerializer if self.action == "retrieve" else MessageSerializer
 
 
-class MessageStatsAPIView(APIView):
+class MessageStatsAPIView(OrganizationAwareMixin, APIView):
     """Aggregate message counts across every campaign."""
 
     permission_classes = [IsActiveUser]
 
     @extend_schema(responses={200: GlobalMessageStatsSerializer})
     def get(self, request: Request) -> Response:
-        return Response(GlobalMessageStatsSerializer(global_stats()).data)
+        return Response(GlobalMessageStatsSerializer(global_stats(self.organization)).data)

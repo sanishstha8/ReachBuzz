@@ -111,7 +111,7 @@ class CampaignListView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
 
     def get_queryset(self):
         queryset = (
-            Campaign.objects.all()
+            self.scoped(Campaign)
             .select_related("template", "created_by")
             .annotate(
                 message_count=Count("messages", distinct=True),
@@ -153,7 +153,7 @@ class CampaignDetailView(ActiveUserRequiredMixin, PageTitleMixin, DetailView):
     active_nav = "campaigns"
 
     def get_queryset(self):
-        return Campaign.objects.select_related("template", "created_by").prefetch_related(
+        return self.scoped(Campaign).select_related("template", "created_by").prefetch_related(
             "audience_entries__group"
         )
 
@@ -198,6 +198,7 @@ class CampaignCreateView(CapabilityRequiredMixin, WizardContextMixin, PageTitleM
 
     def form_valid(self, form) -> HttpResponse:
         campaign = services.create_campaign(
+            organization=self.organization,
             name=form.cleaned_data["name"],
             description=form.cleaned_data.get("description", ""),
             user=self.request.user,
@@ -488,7 +489,7 @@ class CampaignMessagesView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
 
     def get_queryset(self):
         queryset = (
-            Message.objects.filter(campaign=self.campaign)
+            self.scoped(Message).filter(campaign=self.campaign)
             .select_related("contact")
             .order_by("contact__name")
         )

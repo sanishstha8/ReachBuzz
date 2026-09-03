@@ -29,7 +29,7 @@ class TemplateListView(ActiveUserRequiredMixin, PageTitleMixin, ListView):
     active_nav = "templates"
 
     def get_queryset(self):
-        queryset = MessageTemplate.objects.all()
+        queryset = self.scoped(MessageTemplate)
         search = self.request.GET.get("search", "").strip()
         if search:
             queryset = queryset.filter(name__icontains=search)
@@ -96,6 +96,7 @@ class LocalTemplateCreateView(CapabilityRequiredMixin, PageTitleMixin, CreateVie
         form.instance.source = TemplateSource.LOCAL
         form.instance.status = TemplateStatus.NOT_SUBMITTED
         form.instance.created_by = self.request.user
+        form.instance.organization = self.organization
         response = super().form_valid(form)
         django_messages.success(
             self.request,

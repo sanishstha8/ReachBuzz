@@ -29,9 +29,11 @@ SMALL = 3
 LARGER = 30
 
 
-def build_data(size, make_contact, make_campaign, template):
+def build_data(size, make_contact, make_campaign, template, organization):
     """A group, a completed campaign, and ``size`` recipients with messages."""
-    group = ContactGroup.objects.create(name=f"Group of {size}")
+    # The group needs its tenant like everything else, or its detail page
+    # correctly 404s for the very client that just created it.
+    group = ContactGroup.objects.create(name=f"Group of {size}", organization=organization)
     campaign = make_campaign(f"Campaign of {size}", status=CampaignStatus.COMPLETED, template=template)
 
     contacts = []
@@ -77,12 +79,12 @@ def count_queries(client, url: str) -> int:
 
 class TestPagesDoNotScaleWithData:
     def test_every_page_costs_the_same_at_any_size(
-        self, auth_client, make_contact, make_campaign, approved_template
+        self, auth_client, make_contact, make_campaign, approved_template, organization
     ) -> None:
-        small = build_data(SMALL, make_contact, make_campaign, approved_template)
+        small = build_data(SMALL, make_contact, make_campaign, approved_template, organization)
         cheap = {name: count_queries(auth_client, url) for name, url in pages(small).items()}
 
-        larger = build_data(LARGER, make_contact, make_campaign, approved_template)
+        larger = build_data(LARGER, make_contact, make_campaign, approved_template, organization)
         dear = {name: count_queries(auth_client, url) for name, url in pages(larger).items()}
 
         grew = {
@@ -93,7 +95,7 @@ class TestPagesDoNotScaleWithData:
 
 class TestApiDoesNotScaleWithData:
     def test_every_list_endpoint_costs_the_same_at_any_size(
-        self, auth_api_client, make_contact, make_campaign, approved_template
+        self, auth_api_client, make_contact, make_campaign, approved_template, organization
     ) -> None:
         """
         The API pages at 25 by default, so an N+1 here is a query per row of a
@@ -110,10 +112,10 @@ class TestApiDoesNotScaleWithData:
             "active campaigns": "/api/monitor/active-campaigns/",
         }
 
-        build_data(SMALL, make_contact, make_campaign, approved_template)
+        build_data(SMALL, make_contact, make_campaign, approved_template, organization)
         cheap = {name: count_queries(auth_api_client, url) for name, url in endpoints.items()}
 
-        build_data(LARGER, make_contact, make_campaign, approved_template)
+        build_data(LARGER, make_contact, make_campaign, approved_template, organization)
         dear = {name: count_queries(auth_api_client, url) for name, url in endpoints.items()}
 
         grew = {name: (cheap[name], dear[name]) for name in cheap if dear[name] > cheap[name]}
@@ -122,7 +124,7 @@ class TestApiDoesNotScaleWithData:
 
 class TestExportsStreamRatherThanBuffer:
     def test_a_large_export_does_not_scale_its_query_count(
-        self, auth_client, make_contact, make_campaign, approved_template
+        self, auth_client, make_contact, make_campaign, approved_template, organization
     ) -> None:
         """
         Exports read with .iterator(), so the cost is a fixed number of chunked
@@ -130,7 +132,7 @@ class TestExportsStreamRatherThanBuffer:
         """
         from dashboard.reports import REPORTS
 
-        build_data(SMALL, make_contact, make_campaign, approved_template)
+        build_data(SMALL, make_contact, make_campaign, approved_template, organization)
         cheap = {}
         for slug in REPORTS:
             with CaptureQueriesContext(connection) as captured:
@@ -140,7 +142,7 @@ class TestExportsStreamRatherThanBuffer:
                 b"".join(response.streaming_content)
             cheap[slug] = len(captured)
 
-        build_data(LARGER, make_contact, make_campaign, approved_template)
+        build_data(LARGER, make_contact, make_campaign, approved_template, organization)
         for slug in REPORTS:
             with CaptureQueriesContext(connection) as captured:
                 response = auth_client.get(

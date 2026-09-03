@@ -71,7 +71,7 @@ class TestFormulaInjection:
 
 
 class TestCampaignReport:
-    def test_the_header_is_written_even_with_no_rows(self, auth_client) -> None:
+    def test_the_header_is_written_even_with_no_rows(self, auth_client, organization) -> None:
         rows = _download(auth_client, "campaigns")
         assert rows == [list(reports.REPORTS["campaigns"].header)]
 
@@ -89,7 +89,7 @@ class TestCampaignReport:
         assert rows[1][5] == "2"  # recipients
 
     def test_the_file_agrees_with_the_page(
-        self, auth_client, launched_campaign, make_message
+        self, auth_client, launched_campaign, make_message, organization
     ) -> None:
         """A figure on screen and the same figure in the file cannot disagree."""
         campaign = launched_campaign("Summer Sale")
@@ -98,7 +98,7 @@ class TestCampaignReport:
         make_message(campaign, status=MessageStatus.FAILED)
 
         row = _download(auth_client, "campaigns")[1]
-        page = services.campaign_performance(services.ReportPeriod.last_days(30))[0]
+        page = services.campaign_performance(organization, services.ReportPeriod.last_days(30))[0]
 
         assert row[11] == str(page.stats.delivery_rate)
         assert row[12] == str(page.stats.failure_rate)

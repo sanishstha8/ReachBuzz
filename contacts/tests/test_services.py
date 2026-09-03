@@ -13,20 +13,22 @@ pytestmark = pytest.mark.django_db
 
 
 class TestCreateContact:
-    def test_normalizes_the_phone_number(self, operator) -> None:
+    def test_normalizes_the_phone_number(self, operator, organization) -> None:
         contact = services.create_contact(
+            organization=organization,
             name="Aarav", phone_number="+977 980-000 0000", user=operator
         )
         assert contact.phone_number == "+9779800000000"
         assert contact.country_code == "977"
 
-    def test_defaults_to_not_opted_in(self, operator) -> None:
-        contact = services.create_contact(name="Aarav", phone_number="+9779800000000", user=operator)
+    def test_defaults_to_not_opted_in(self, operator, organization) -> None:
+        contact = services.create_contact(name="Aarav", phone_number="+9779800000000", user=operator, organization=organization)
         assert contact.opted_in is False
         assert contact.opt_in_at is None
 
-    def test_explicit_consent_records_a_source(self, operator) -> None:
+    def test_explicit_consent_records_a_source(self, operator, organization) -> None:
         contact = services.create_contact(
+            organization=organization,
             name="Aarav",
             phone_number="+9779800000000",
             opted_in=True,
@@ -37,35 +39,36 @@ class TestCreateContact:
         assert contact.opt_in_source == OptInSource.WEB_FORM
         assert contact.opt_in_at is not None
 
-    def test_duplicate_number_raises_conflict(self, operator, make_contact) -> None:
+    def test_duplicate_number_raises_conflict(self, operator, make_contact, organization) -> None:
         make_contact("Existing", "+9779800000000")
 
         with pytest.raises(ConflictError) as exc_info:
-            services.create_contact(name="Copy", phone_number="+9779800000000", user=operator)
+            services.create_contact(name="Copy", phone_number="+9779800000000", user=operator, organization=organization)
 
         assert "phone_number" in exc_info.value.details
 
-    def test_duplicate_detection_survives_different_formatting(self, operator, make_contact) -> None:
+    def test_duplicate_detection_survives_different_formatting(self, operator, make_contact, organization) -> None:
         """The whole point of normalizing: these are the same person."""
         make_contact("Existing", "+9779800000000")
 
         with pytest.raises(ConflictError):
-            services.create_contact(name="Copy", phone_number="0980-000 0000", user=operator)
+            services.create_contact(name="Copy", phone_number="0980-000 0000", user=operator, organization=organization)
 
-    def test_invalid_number_raises_a_field_error(self, operator) -> None:
+    def test_invalid_number_raises_a_field_error(self, operator, organization) -> None:
         with pytest.raises(ValidationFailed) as exc_info:
-            services.create_contact(name="Bad", phone_number="not a number", user=operator)
+            services.create_contact(name="Bad", phone_number="not a number", user=operator, organization=organization)
 
         assert "phone_number" in exc_info.value.details
 
-    def test_groups_are_attached(self, operator, group) -> None:
+    def test_groups_are_attached(self, operator, group, organization) -> None:
         contact = services.create_contact(
+            organization=organization,
             name="Aarav", phone_number="+9779800000000", groups=[group], user=operator
         )
         assert contact.groups.count() == 1
 
-    def test_creation_is_audited(self, operator) -> None:
-        contact = services.create_contact(name="Aarav", phone_number="+9779800000000", user=operator)
+    def test_creation_is_audited(self, operator, organization) -> None:
+        contact = services.create_contact(name="Aarav", phone_number="+9779800000000", user=operator, organization=organization)
         entry = AuditLog.objects.get(action=AuditAction.CONTACT_CREATED)
         assert entry.object_id == str(contact.pk)
         assert entry.user == operator
@@ -159,11 +162,11 @@ class TestGroupMembership:
         assert removed == 1
         assert group.memberships.count() == 0
 
-    def test_set_contact_groups_replaces_membership(self, operator, make_contact) -> None:
+    def test_set_contact_groups_replaces_membership(self, operator, make_contact, organization) -> None:
         contact = make_contact()
-        first = ContactGroup.objects.create(name="First")
-        second = ContactGroup.objects.create(name="Second")
-        third = ContactGroup.objects.create(name="Third")
+        first = ContactGroup.objects.create(name="First", organization=organization)
+        second = ContactGroup.objects.create(name="Second", organization=organization)
+        third = ContactGroup.objects.create(name="Third", organization=organization)
 
         services.set_contact_groups(contact, [first, second], user=operator)
         result = services.set_contact_groups(contact, [second, third], user=operator)

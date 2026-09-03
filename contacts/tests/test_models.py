@@ -18,19 +18,19 @@ pytestmark = pytest.mark.django_db
 
 
 class TestContact:
-    def test_phone_number_is_unique(self, make_contact) -> None:
+    def test_phone_number_is_unique(self, make_contact, organization) -> None:
         make_contact("First", "+9779800000000")
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                Contact.objects.create(name="Second", phone_number="+9779800000000")
+                Contact.objects.create(name="Second", phone_number="+9779800000000", organization=organization)
 
-    def test_non_e164_number_violates_the_check_constraint(self, db) -> None:
+    def test_non_e164_number_violates_the_check_constraint(self, db, organization) -> None:
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                Contact.objects.create(name="Bad", phone_number="9779800000000")
+                Contact.objects.create(name="Bad", phone_number="9779800000000", organization=organization)
 
-    def test_new_contacts_are_not_opted_in_by_default(self, db) -> None:
-        contact = Contact.objects.create(name="Nobody", phone_number="+9779800000001")
+    def test_new_contacts_are_not_opted_in_by_default(self, db, organization) -> None:
+        contact = Contact.objects.create(name="Nobody", phone_number="+9779800000001", organization=organization)
         assert contact.opted_in is False
         assert contact.opt_in_at is None
 
@@ -89,10 +89,10 @@ class TestEligibility:
 
 
 class TestGroups:
-    def test_a_contact_can_belong_to_several_groups(self, make_contact) -> None:
+    def test_a_contact_can_belong_to_several_groups(self, make_contact, organization) -> None:
         contact = make_contact()
-        first = ContactGroup.objects.create(name="First")
-        second = ContactGroup.objects.create(name="Second")
+        first = ContactGroup.objects.create(name="First", organization=organization)
+        second = ContactGroup.objects.create(name="Second", organization=organization)
 
         GroupMembership.objects.create(group=first, contact=contact)
         GroupMembership.objects.create(group=second, contact=contact)
@@ -107,10 +107,10 @@ class TestGroups:
             with transaction.atomic():
                 GroupMembership.objects.create(group=group, contact=contact)
 
-    def test_group_name_is_unique(self, group) -> None:
+    def test_group_name_is_unique(self, group, organization) -> None:
         with pytest.raises(IntegrityError):
             with transaction.atomic():
-                ContactGroup.objects.create(name=group.name)
+                ContactGroup.objects.create(name=group.name, organization=organization)
 
     def test_member_and_eligible_counts_differ(self, group_with_members) -> None:
         assert group_with_members.count_members() == 3

@@ -27,6 +27,7 @@ from dashboard.serializers import (
     FailureReasonSerializer,
     OverviewSerializer,
 )
+from organizations.scoping import OrganizationAwareMixin
 
 PERIOD_PARAMETERS = [
     OpenApiParameter(
@@ -52,7 +53,7 @@ def _period_payload(period: services.ReportPeriod) -> dict:
     }
 
 
-class ReportAPIView(APIView):
+class ReportAPIView(OrganizationAwareMixin, APIView):
     """Shared period handling for every reporting endpoint."""
 
     permission_classes = [IsActiveUser]
@@ -67,7 +68,7 @@ class ReportOverviewAPIView(ReportAPIView):
     @extend_schema(parameters=PERIOD_PARAMETERS, responses={200: OverviewSerializer})
     def get(self, request: Request) -> Response:
         period = self.get_period(request)
-        overview = services.overview(period)
+        overview = services.overview(self.organization, period)
         payload = {
             "period": _period_payload(period),
             "messages": overview.messages,
@@ -104,7 +105,7 @@ class ReportActivityAPIView(ReportAPIView):
         period = self.get_period(request)
         payload = {
             "period": _period_payload(period),
-            "days": services.daily_activity(period),
+            "days": services.daily_activity(self.organization, period),
         }
         return Response(ActivitySerializer(payload).data)
 
@@ -116,7 +117,7 @@ class ReportCampaignsAPIView(ReportAPIView):
         parameters=PERIOD_PARAMETERS, responses={200: CampaignPerformanceSerializer(many=True)}
     )
     def get(self, request: Request) -> Response:
-        rows = services.campaign_performance(self.get_period(request))
+        rows = services.campaign_performance(self.organization, self.get_period(request))
         return Response(CampaignPerformanceSerializer(rows, many=True).data)
 
 
@@ -125,11 +126,11 @@ class ReportFailuresAPIView(ReportAPIView):
 
     @extend_schema(parameters=PERIOD_PARAMETERS, responses={200: FailureReasonSerializer(many=True)})
     def get(self, request: Request) -> Response:
-        reasons = services.failure_reasons(self.get_period(request))
+        reasons = services.failure_reasons(self.organization, self.get_period(request))
         return Response(FailureReasonSerializer(reasons, many=True).data)
 
 
-class ConsentSummaryAPIView(APIView):
+class ConsentSummaryAPIView(OrganizationAwareMixin, APIView):
     """
     Current consent state.
 
@@ -141,10 +142,10 @@ class ConsentSummaryAPIView(APIView):
 
     @extend_schema(responses={200: ConsentSummarySerializer})
     def get(self, request: Request) -> Response:
-        return Response(ConsentSummarySerializer(services.consent_summary()).data)
+        return Response(ConsentSummarySerializer(services.consent_summary(self.organization)).data)
 
 
-class ActiveCampaignsAPIView(APIView):
+class ActiveCampaignsAPIView(OrganizationAwareMixin, APIView):
     """
     Campaigns sending right now. The dashboard's live panel polls this.
 
@@ -156,5 +157,5 @@ class ActiveCampaignsAPIView(APIView):
 
     @extend_schema(responses={200: CampaignPerformanceSerializer(many=True)})
     def get(self, request: Request) -> Response:
-        rows = services.active_campaigns()
+        rows = services.active_campaigns(self.organization)
         return Response(CampaignPerformanceSerializer(rows, many=True).data)

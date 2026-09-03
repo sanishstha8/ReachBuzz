@@ -189,13 +189,13 @@ class TestClear:
         assert MessageTemplate.objects.count() == 0
         assert Message.objects.count() == 0
 
-    def test_it_leaves_real_data_alone(self, seeded, make_contact) -> None:
+    def test_it_leaves_real_data_alone(self, seeded, make_contact, organization) -> None:
         """
         The marker is what separates seeded rows from a person's own work.
         Clearing must never be a way to lose real contacts.
         """
         real = make_contact("A real person", "+9779812345678", opted_in=True)
-        real_group = ContactGroup.objects.create(name="A real group")
+        real_group = ContactGroup.objects.create(name="A real group", organization=organization)
 
         call_command("seed_demo", clear=True, verbosity=0)
 

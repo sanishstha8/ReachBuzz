@@ -20,7 +20,10 @@ from whatsapp.webhooks import MetaWebhookView
 urlpatterns = [
     path("admin/", admin.site.urls),
     # --- HTML pages --------------------------------------------------------
-    path("", include("dashboard.urls", namespace="dashboard")),
+    # The public landing page owns the root; the operator dashboard sits one
+    # level in. Everything links by name, so moving it breaks no reverse().
+    path("", include("pages.urls", namespace="pages")),
+    path("dashboard/", include("dashboard.urls", namespace="dashboard")),
     path("accounts/", include("accounts.urls", namespace="accounts")),
     path("contacts/", include("contacts.urls", namespace="contacts")),
     path("campaigns/", include("campaigns.urls", namespace="campaigns")),

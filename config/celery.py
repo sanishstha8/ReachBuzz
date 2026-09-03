@@ -13,7 +13,7 @@ from celery.schedules import crontab
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.local")
 
-app = Celery("rebuzz")
+app = Celery("reachbuzz")
 
 # All Celery settings live in Django settings under the CELERY_ prefix.
 app.config_from_object("django.conf:settings", namespace="CELERY")

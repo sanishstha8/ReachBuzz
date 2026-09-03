@@ -37,13 +37,32 @@ def operator(make_user):
 
 
 @pytest.fixture
-def viewer(make_user):
-    return make_user("viewer@example.com", UserRole.VIEWER)
+def viewer(make_user, organization):
+    """A read-only user, inside the same tenant as everybody else."""
+    return _join(organization, make_user("viewer@example.com", UserRole.VIEWER))
 
 
 @pytest.fixture
-def administrator(make_user):
-    return make_user("admin@example.com", UserRole.ADMINISTRATOR)
+def administrator(make_user, organization):
+    """
+    An administrator of the *organization*, not of the platform.
+
+    Membership matters as much as the role: a user outside every organization
+    resolves to no tenant, so their writes have nowhere to go — correct
+    behaviour, but not what a role-permission test means to exercise.
+    """
+    return _join(organization, make_user("admin@example.com", UserRole.ADMINISTRATOR))
+
+
+def _join(organization, user, role=None):
+    from organizations.models import OrganizationMember, OrganizationRole
+
+    OrganizationMember.objects.get_or_create(
+        organization=organization,
+        user=user,
+        defaults={"role": role or OrganizationRole.ADMIN},
+    )
+    return user
 
 
 @pytest.fixture
@@ -52,8 +71,47 @@ def superuser(db):
 
 
 @pytest.fixture
-def auth_client(operator) -> Client:
-    """Django test client signed in as an operator."""
+def organization(db, operator):
+    """
+    The organization the test operator belongs to.
+
+    Nearly every fixture below hangs off this, so a test that creates a contact
+    and a test that signs in are talking about the same tenant. Tests that care
+    about isolation create a second one explicitly — see `other_organization`.
+    """
+    from organizations.models import Organization, OrganizationMember, OrganizationRole
+
+    org = Organization.objects.create(name="Test Organization", owner=operator)
+    OrganizationMember.objects.create(
+        organization=org, user=operator, role=OrganizationRole.OWNER
+    )
+    return org
+
+
+@pytest.fixture
+def other_organization(db, make_user):
+    """A second tenant, for proving one customer cannot reach another's data."""
+    from organizations.models import Organization, OrganizationMember, OrganizationRole
+
+    outsider = make_user("outsider@example.com")
+    org = Organization.objects.create(name="Other Organization", owner=outsider)
+    OrganizationMember.objects.create(
+        organization=org, user=outsider, role=OrganizationRole.OWNER
+    )
+    org.outsider = outsider
+    return org
+
+
+@pytest.fixture
+def auth_client(operator, organization) -> Client:
+    """
+    Django test client signed in as an operator, inside an organization.
+
+    The organization is not optional: views scope every query to the caller's
+    tenant, so a signed-in user without one sees nothing. Depending on it here
+    means the ordinary test does not have to think about tenancy, while the
+    isolation tests still create a second organization explicitly.
+    """
     client = Client()
     client.force_login(operator)
     return client
@@ -65,14 +123,14 @@ def api_client() -> APIClient:
 
 
 @pytest.fixture
-def auth_api_client(operator) -> APIClient:
+def auth_api_client(operator, organization) -> APIClient:
     client = APIClient()
     client.force_login(operator)
     return client
 
 
 @pytest.fixture
-def make_contact(db):
+def make_contact(db, organization):
     """
     Factory producing contacts with explicit consent state.
 
@@ -95,6 +153,7 @@ def make_contact(db):
         if phone_number is None:
             phone_number = f"+97798{counter['n']:08d}"
 
+        extra.setdefault("organization", organization)
         contact = Contact(
             name=name,
             phone_number=phone_number,
@@ -116,7 +175,7 @@ def make_contact(db):
 
 
 @pytest.fixture
-def make_template(db):
+def make_template(db, organization):
     """Factory for message templates, local by default."""
     from whatsapp.models import MessageTemplate, TemplateSource, TemplateStatus
 
@@ -131,6 +190,7 @@ def make_template(db):
         **extra,
     ):
         counter["n"] += 1
+        extra.setdefault("organization", organization)
         return MessageTemplate.objects.create(
             name=name or f"template_{counter['n']}",
             body_text=body_text,
@@ -162,7 +222,7 @@ def local_template(make_template):
 
 
 @pytest.fixture
-def make_campaign(db, operator):
+def make_campaign(db, operator, organization):
     """Factory for draft campaigns."""
     from campaigns.models import Campaign
 
@@ -170,6 +230,7 @@ def make_campaign(db, operator):
 
     def _make_campaign(name: str | None = None, **extra):
         counter["n"] += 1
+        extra.setdefault("organization", organization)
         return Campaign.objects.create(
             name=name or f"Campaign {counter['n']}", created_by=operator, **extra
         )

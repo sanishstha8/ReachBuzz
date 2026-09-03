@@ -45,11 +45,12 @@ from contacts.serializers import (
 from core.mixins import ListOnlyFilterMixin
 from core.pagination import LargeResultsPagination
 from core.permissions import CanManageContacts, IsActiveUser
+from organizations.scoping import OrganizationAwareMixin, OrganizationScopedViewSetMixin
 
 logger = logging.getLogger(__name__)
 
 
-class ContactViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
+class ContactViewSet(OrganizationScopedViewSetMixin, ListOnlyFilterMixin, viewsets.ModelViewSet):
     """CRUD for contacts, plus the audited consent actions."""
 
     serializer_class = ContactSerializer
@@ -66,7 +67,7 @@ class ContactViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
         # through relation — as this did — leaves the serializer issuing one
         # query per contact, which is invisible locally and a page-load per
         # row in production.
-        return Contact.objects.all().prefetch_related("groups", "group_memberships__group")
+        return self.scoped(Contact).prefetch_related("groups", "group_memberships__group")
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -76,6 +77,7 @@ class ContactViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer) -> None:
         data = serializer.validated_data
         contact = services.create_contact(
+            organization=self.organization,
             name=data["name"],
             phone_number=data["phone_number"],
             email=data.get("email", ""),
@@ -162,7 +164,7 @@ class ContactViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
         return Response({"count": history.count(), "results": []})
 
 
-class ContactGroupViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
+class ContactGroupViewSet(OrganizationScopedViewSetMixin, ListOnlyFilterMixin, viewsets.ModelViewSet):
     """CRUD for groups, plus membership management."""
 
     serializer_class = ContactGroupSerializer
@@ -173,10 +175,10 @@ class ContactGroupViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
     ordering = ["name"]
 
     def get_queryset(self):
-        return ContactGroup.objects.with_counts()
+        return self.scoped(ContactGroup).with_counts()
 
     def perform_create(self, serializer) -> None:
-        serializer.save(created_by=self.request.user)
+        serializer.save(created_by=self.request.user, organization=self.organization)
 
     @extend_schema(
         responses={200: GroupMembershipSerializer(many=True)},
@@ -227,7 +229,7 @@ class ContactGroupViewSet(ListOnlyFilterMixin, viewsets.ModelViewSet):
         return Response(ContactGroupSerializer(group).data)
 
 
-class ContactImportViewSet(viewsets.ReadOnlyModelViewSet):
+class ContactImportViewSet(OrganizationScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """Import history and per-row reports."""
 
     serializer_class = ContactImportSerializer
@@ -235,10 +237,10 @@ class ContactImportViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return ContactImport.objects.select_related("target_group").prefetch_related("rows")
+        return self.scoped(ContactImport).select_related("target_group").prefetch_related("rows")
 
 
-class ContactImportCreateAPIView(APIView):
+class ContactImportCreateAPIView(OrganizationAwareMixin, APIView):
     """
     Upload a CSV file.
 
@@ -263,6 +265,7 @@ class ContactImportCreateAPIView(APIView):
 
         contact_import = import_contacts_from_file(
             serializer.validated_data["file"],
+            organization=self.organization,
             update_existing=serializer.validated_data.get("update_existing", False),
             target_group=serializer.validated_data.get("target_group"),
             user=request.user,
@@ -273,7 +276,7 @@ class ContactImportCreateAPIView(APIView):
         )
 
 
-class ContactStatsAPIView(APIView):
+class ContactStatsAPIView(OrganizationAwareMixin, APIView):
     """Aggregate contact counts, used by the dashboard tiles."""
 
     permission_classes = [IsActiveUser]
@@ -282,14 +285,14 @@ class ContactStatsAPIView(APIView):
     def get(self, request: Request) -> Response:
         # Aliases must not reuse a field name: Django would resolve the filter
         # reference to the alias and refuse to aggregate over an aggregate.
-        aggregates = Contact.objects.aggregate(
+        aggregates = self.scoped(Contact).aggregate(
             total_count=Count("id"),
             opted_in_count=Count("id", filter=Q(opted_in=True)),
             eligible_count=Count("id", filter=Q(opted_in=True, status=ContactStatus.ACTIVE)),
         )
         by_status = {
             row["status"]: row["count"]
-            for row in Contact.objects.values("status").annotate(count=Count("id"))
+            for row in self.scoped(Contact).values("status").annotate(count=Count("id"))
         }
 
         data = {

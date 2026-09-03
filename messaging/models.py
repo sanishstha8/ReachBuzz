@@ -18,6 +18,7 @@ from django.utils.translation import gettext_lazy as _
 from campaigns.models import Campaign, CampaignMessageType
 from contacts.models import Contact
 from core.models import BaseModel, TimeStampedModel
+from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 from whatsapp.models import MessageTemplate
 
 
@@ -54,7 +55,7 @@ TERMINAL_STATUSES = frozenset(
 CLAIMABLE_STATUSES = frozenset({MessageStatus.PENDING, MessageStatus.QUEUED})
 
 
-class MessageQuerySet(models.QuerySet):
+class MessageQuerySet(OrganizationScopedQuerySet):
     def in_flight(self) -> MessageQuerySet:
         return self.filter(status__in=IN_FLIGHT_STATUSES)
 
@@ -68,7 +69,7 @@ class MessageQuerySet(models.QuerySet):
         return self.filter(status__in=[MessageStatus.DELIVERED, MessageStatus.READ])
 
 
-class Message(BaseModel):
+class Message(OrganizationOwnedModel, BaseModel):
     """A single outbound WhatsApp message and everything known about it."""
 
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="messages")
@@ -144,6 +145,20 @@ class Message(BaseModel):
             models.Index(fields=["status", "next_retry_at"], name="message_retry_idx"),
             models.Index(fields=["contact", "-created_at"], name="message_contact_recent_idx"),
         ]
+
+    def save(self, *args, **kwargs):
+        """
+        Inherit the campaign's organization.
+
+        A message cannot belong to a different tenant than the campaign that
+        produced it, so deriving it here removes the possibility of a creation
+        site forgetting — which would leave the row invisible to the customer
+        who sent it. ``materialize_messages`` still sets it explicitly, because
+        ``bulk_create`` does not call this.
+        """
+        if self.organization_id is None and self.campaign_id:
+            self.organization_id = self.campaign.organization_id
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.to_phone_number} · {self.get_status_display()}"

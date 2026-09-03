@@ -436,6 +436,10 @@ def _persist_import(
             country_code=row.country_code,
             email=row.email,
             status=ContactStatus.ACTIVE,
+            # Derived from the import, never passed separately: a contact that
+            # landed in a different organization than the file it came from
+            # would be invisible to whoever uploaded it.
+            organization_id=contact_import.organization_id,
             created_by=user,
         )
         if row.opted_in:
@@ -529,6 +533,7 @@ def import_contacts_from_file(
     *,
     update_existing: bool = False,
     target_group: ContactGroup | None = None,
+    organization=None,
     user=None,
     request=None,
 ) -> ContactImport:
@@ -538,6 +543,7 @@ def import_contacts_from_file(
     contact_import = ContactImport.objects.create(
         file_name=(getattr(uploaded_file, "name", "") or "upload.csv")[:255],
         file_size=getattr(uploaded_file, "size", 0) or len(text.encode("utf-8")),
+        organization=organization,
         uploaded_by=user,
     )
     return run_import(

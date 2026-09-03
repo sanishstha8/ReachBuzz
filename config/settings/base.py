@@ -66,12 +66,14 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     "core.apps.CoreConfig",
+    "organizations.apps.OrganizationsConfig",
     "accounts.apps.AccountsConfig",
     "contacts.apps.ContactsConfig",
     "whatsapp.apps.WhatsappConfig",
     "campaigns.apps.CampaignsConfig",
     "messaging.apps.MessagingConfig",
     "dashboard.apps.DashboardConfig",
+    "pages.apps.PagesConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -227,9 +229,9 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "ReBuzz API",
+    "TITLE": "ReachBuzz API",
     "DESCRIPTION": (
-        "ReBuzz — Business Messaging & Automation Platform.\n\n"
+        "ReachBuzz — Business Messaging & Automation Platform.\n\n"
         "A WhatsApp Business messaging and campaign management platform for "
         "businesses to send, manage, and track customer communications.\n\n"
         "Messages are sent only to recipients whose consent is recorded, through "
@@ -335,7 +337,7 @@ CAMPAIGN_MAX_RECIPIENTS = env.int("CAMPAIGN_MAX_RECIPIENTS", default=5_000)
 
 # Short name for UI chrome (sidebar, page titles); full name and tagline for
 # documentation, the API schema and the page description.
-SITE_NAME = env("SITE_NAME", default="ReBuzz")
+SITE_NAME = env("SITE_NAME", default="ReachBuzz")
 SITE_TAGLINE = env("SITE_TAGLINE", default="Business Messaging & Automation Platform")
 SITE_DESCRIPTION = env(
     "SITE_DESCRIPTION",

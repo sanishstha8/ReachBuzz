@@ -99,4 +99,8 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/placeholder
           ALLOWED_HOSTS: example.com
           CSRF_TRUSTED_ORIGINS: https://example.com
+          # A throwaway Fernet key. Real deployments must set their own: without
+          # one the encryption key is derived from SECRET_KEY, and rotating that
+          # would make every stored provider credential unreadable.
+          FIELD_ENCRYPTION_KEY: 8Xn2sVQF0pKcJhWm4tRzYbL7dEgA1uNiO3vC6qMxPkU=
         run: python manage.py check --deploy --fail-level WARNING

@@ -134,8 +134,12 @@ class MessageTemplate(OrganizationOwnedModel, BaseModel):
         verbose_name = _("message template")
         verbose_name_plural = _("message templates")
         constraints = [
+            # Scoped to the organization: templates belong to a WABA, and
+            # "order_ready" is a name several businesses will each register
+            # with Meta independently.
             models.UniqueConstraint(
-                fields=["name", "language"], name="unique_template_name_language"
+                fields=["organization", "name", "language"],
+                name="unique_template_name_language",
             ),
         ]
         indexes = [models.Index(fields=["source", "status"], name="template_usability_idx")]

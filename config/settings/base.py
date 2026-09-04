@@ -304,6 +304,20 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="mock")
 
+# Encrypts per-organization provider credentials at rest. Generate one with:
+#   python manage.py generate_encryption_key
+# Unset, a key is derived from SECRET_KEY - fine for development, a hazard in
+# production, because rotating SECRET_KEY would make every stored token
+# unreadable. check --deploy warns when it is missing.
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+
+# Whether an organization must connect its own WhatsApp sender before it can
+# send. False keeps every pre-Stage-5 installation working by falling back to
+# the credentials below. A platform serving strangers wants this True: without
+# it, a customer with no account of their own sends on the deployment's number,
+# messaging limit and sender reputation.
+WHATSAPP_REQUIRE_MESSAGING_ACCOUNT = env.bool("WHATSAPP_REQUIRE_MESSAGING_ACCOUNT", default=False)
+
 META_API_VERSION = env("META_API_VERSION", default="")
 META_ACCESS_TOKEN = env("META_ACCESS_TOKEN", default="")
 META_PHONE_NUMBER_ID = env("META_PHONE_NUMBER_ID", default="")

@@ -131,8 +131,10 @@ class TestMetaProviderGuards:
             MetaWhatsAppProvider().check_configuration()
 
         message = str(exc_info.value)
-        assert "META_ACCESS_TOKEN" in message
+        assert "access token" in message
         assert "META_API_VERSION" in message
+        # Says where to set them, which is no longer always the environment.
+        assert "the environment" in message
 
     @override_settings(META_ACCESS_TOKEN="EAAsupersecrettoken1234567890")
     def test_configuration_error_never_prints_a_credential(self) -> None:
@@ -172,5 +174,5 @@ class TestMetaProviderGuards:
         META_WABA_ID="",
     )
     def test_template_sync_needs_the_waba_id(self) -> None:
-        with pytest.raises(ProviderNotConfigured, match="META_WABA_ID"):
+        with pytest.raises(ProviderNotConfigured, match="WABA id"):
             MetaWhatsAppProvider().fetch_templates()

@@ -27,6 +27,7 @@ from django.utils import timezone
 
 from campaigns.models import Campaign, CampaignMessageType, CampaignStatus
 from campaigns.services import finalize_if_complete
+from core.exceptions import ProviderNotConfigured
 from messaging.models import CLAIMABLE_STATUSES, Message, MessageStatus, StatusEventSource
 from messaging.services import (
     StatusUpdate,
@@ -37,7 +38,7 @@ from messaging.services import (
     release_claim,
     schedule_retry,
 )
-from whatsapp.services.factory import get_provider, is_simulated
+from whatsapp.services.factory import is_simulated, provider_for
 from whatsapp.services.rate_limiter import get_rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,17 @@ def send_message_task(self, message_id: str) -> str:
         raise self.retry(countdown=acquisition.retry_after, max_retries=None)
 
     # --- send --------------------------------------------------------------
-    provider = get_provider()
+    # Resolved per message, from the owning organization. A campaign goes out on
+    # that customer's number, against their messaging limit — which is the
+    # whole point of Stage 5, and the reason this is not hoisted out of the loop
+    # or cached: two messages in the same worker can belong to two tenants.
+    try:
+        provider = provider_for(message.organization)
+    except ProviderNotConfigured as exc:
+        release_claim(message, to_status=MessageStatus.QUEUED)
+        logger.error("send_message: no usable sender for message %s: %s", message_id, exc)
+        return "provider-not-configured"
+
     attempt = message.attempt_count + 1
 
     try:

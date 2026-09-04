@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Every plan sends through your own WhatsApp Business Account.</p>
+{% endblock %}
+
+{% block content %}
+
+<p class="mb-4">
+  <a href="{% url 'billing:overview' %}" class="small"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to billing</a>
+</p>
+
+{% if not can_manage_billing %}
+  <div class="alert alert-secondary" role="status">
+    You can see what is available, but only an owner or administrator can change the plan.
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  {% for plan in plans %}
+    <div class="col-12 col-md-6 col-xl-4">
+      <div class="card h-100 {% if plan.id == current_plan_id %}border-primary{% endif %}">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h2 class="h5 mb-0">{{ plan.name }}</h2>
+            {% if plan.id == current_plan_id %}
+              <span class="badge text-bg-primary">Current</span>
+            {% elif plan.featured %}
+              <span class="badge text-bg-light border">Popular</span>
+            {% endif %}
+          </div>
+
+          <p class="h4 mb-1">
+            {% if plan.has_price %}
+              {{ plan.price_display }}
+            {% else %}
+              <span class="fs-6 text-body-secondary">Pricing on request</span>
+            {% endif %}
+          </p>
+          {% if plan.has_price %}
+            <p class="small text-body-secondary">{{ plan.period }}</p>
+          {% endif %}
+
+          {% if plan.summary %}<p class="small">{{ plan.summary }}</p>{% endif %}
+
+          <ul class="list-unstyled small flex-grow-1">
+            <li class="mb-1">
+              <i class="bi bi-people text-body-tertiary" aria-hidden="true"></i>
+              {% if plan.max_contacts is None %}Unlimited contacts{% else %}Up to {{ plan.max_contacts|intcomma }} contacts{% endif %}
+            </li>
+            <li class="mb-1">
+              <i class="bi bi-send text-body-tertiary" aria-hidden="true"></i>
+              {% if plan.max_messages_per_month is None %}Unlimited messages{% else %}{{ plan.max_messages_per_month|intcomma }} messages a month{% endif %}
+            </li>
+            <li class="mb-2">
+              <i class="bi bi-person-badge text-body-tertiary" aria-hidden="true"></i>
+              {% if plan.max_team_members is None %}Unlimited team members{% else %}Up to {{ plan.max_team_members|intcomma }} team members{% endif %}
+            </li>
+            {% for feature in plan.features %}
+              <li class="mb-1 text-body-secondary">
+                <i class="bi bi-check2 text-success" aria-hidden="true"></i> {{ feature }}
+              </li>
+            {% endfor %}
+          </ul>
+
+          {% if can_manage_billing and plan.id != current_plan_id %}
+            {# POST, not a link: changing what somebody pays is not a GET. #}
+            <form method="post" action="{% url 'billing:change-plan' plan.slug %}" class="mt-auto">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm w-100 {% if plan.featured %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                Switch to {{ plan.name }}
+              </button>
+            </form>
+          {% elif plan.id == current_plan_id %}
+            <p class="small text-body-tertiary mt-auto mb-0">You are on this plan.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% empty %}
+    <div class="col-12">
+      <p class="text-body-secondary">No plans have been set up on this installation.</p>
+    </div>
+  {% endfor %}
+</div>
+
+<p class="small text-body-tertiary mt-4 mb-0">
+  Changing plan does not restart your billing period, and the new limits apply to
+  what you have already used this period. WhatsApp conversation charges are billed
+  to you by Meta and are separate from this platform.
+</p>
+
+{% endblock %}

@@ -532,5 +532,5 @@ class TestFetchTemplates:
 
     def test_sync_without_the_waba_id_is_refused_by_name(self, settings) -> None:
         settings.META_WABA_ID = ""
-        with pytest.raises(ProviderNotConfigured, match="META_WABA_ID"):
+        with pytest.raises(ProviderNotConfigured, match="WABA id"):
             MetaWhatsAppProvider().fetch_templates()

@@ -47,6 +47,8 @@ Business Platform Cloud API**.
 26. [Sign-up, email confirmation and password reset](#26-sign-up-email-confirmation-and-password-reset)
 27. [Plans, subscriptions and usage](#27-plans-subscriptions-and-usage)
 28. [Invoices and payments](#28-invoices-and-payments)
+29. [Per-organization messaging credentials](#29-per-organization-messaging-credentials)
+30. [The billing area](#30-the-billing-area)
 
 ---
 
@@ -512,8 +514,8 @@ full suite before the next one starts.
 | 2 | Registration, email confirmation, password reset | ✅ Complete — [§26](#26-sign-up-email-confirmation-and-password-reset) |
 | 3 | Plans, subscriptions, usage metering | ✅ Complete — [§27](#27-plans-subscriptions-and-usage) |
 | 4 | Payments and invoices | ✅ Complete — [§28](#28-invoices-and-payments) |
-| 5 | Per-organization messaging credentials | Not started |
-| 6 | Customer billing dashboard | Not started |
+| 5 | Per-organization messaging credentials | ✅ Complete — [§29](#29-per-organization-messaging-credentials) |
+| 6 | Customer billing dashboard | ✅ Complete — [§30](#30-the-billing-area) |
 | 7 | Platform admin dashboard | Not started |
 | 8 | Versioned API, notifications, hardening | Not started |
 | 9 | SMS channel | Not started |
@@ -1480,3 +1482,187 @@ annoys the customer and, on some networks, counts against the merchant.
 No customer-facing billing page, no upgrade button, no PDF, no tax calculation,
 no refund initiation from our side (a refund arriving from the provider is
 handled; asking for one is not). Stage 6 builds the page.
+
+---
+
+## 29. Per-organization messaging credentials
+
+Stage 5, and the one that changes how sending works. Until now there was one
+WhatsApp Business Account for the whole installation, read from the environment.
+That is right for a single business running its own copy and wrong for a
+platform: a customer's messages must go out from **their** number, count against
+**their** messaging limit, and stop when **they** disconnect.
+
+### The split, and why it is not arbitrary
+
+| Where | What | Why |
+|---|---|---|
+| Environment | App id, app secret, webhook verify token, API version | One Meta App serves every tenant |
+| Database, encrypted | Access token, phone number id, WABA id | The customer's own |
+
+The webhook forces this split. Meta delivers every tenant's events to one URL,
+signed with the **app** secret — so verification has to happen before we know
+which organization an event belongs to. You cannot look up a per-tenant secret
+using a payload you have not yet authenticated. Routing happens afterwards, by
+the `phone_number_id` in the payload, which is why that column is unique.
+
+### Tokens are encrypted at rest
+
+`core/encryption.py`, Fernet, keyed by `FIELD_ENCRYPTION_KEY`. The project's rule
+was "credentials live in the environment"; multi-tenancy breaks that mechanism
+without changing its intent, because there is no environment variable for a
+thousand customers' tokens. So **the key lives in the environment and the secrets
+live encrypted under it** — a database dump alone reveals nothing.
+
+What it does not do: protect against the running application. A process that can
+decrypt can read. It protects backups, replicas and dumps, which is most of the
+realistic exposure.
+
+`access_token` is a **property, not a field**. It is absent from `_meta.fields`,
+so `ModelForm`, `ModelSerializer`, `values()` and the admin's default field list
+all skip it unless somebody names it deliberately. The admin shows `…mnop` — the
+last four characters, and only for a token long enough that four don't narrow it
+down.
+
+Decryption failure **raises**. An empty token handed to a provider looks like a
+configuration mistake at the far end, days later; an exception says what actually
+happened, now.
+
+### Resolving the sender
+
+`provider_for(organization)` → the organization's default active account, else
+the environment. **That fallback is what keeps every pre-Stage-5 installation
+working**, and it is also the thing to think hardest about before running this as
+a public platform: a customer with no account of their own would send on the
+deployment's number, limit and reputation.
+
+`WHATSAPP_REQUIRE_MESSAGING_ACCOUNT=True` turns it off. A platform wants that on;
+a business running its own copy wants it off, which is why off is the default —
+the alternative breaks every existing deployment on upgrade.
+
+Providers are built fresh every call, never cached. A cached provider holds one
+tenant's token and would hand it to the next caller.
+
+### Three cross-tenant defects this stage found and fixed
+
+Writing the isolation tests surfaced these. All three date from Stage 1.
+
+**1. An inbound STOP could withdraw the wrong customer's consent.** Two customers
+can hold the same person as a contact. The lookup matched on the sender's number
+alone and took whichever row came back first. Inbound messages now carry the
+business number they arrived on, and the lookup is scoped to that organization.
+This is the project's most sensitive invariant; it is now pinned by a test that
+asserts the *other* tenant's contact is untouched.
+
+**2. `Contact.phone_number` was globally unique.** The second business to try to
+add a shared customer simply could not. Now unique per organization — a person is
+routinely a customer of more than one business. Same for `ContactGroup.name` (one
+customer naming a group "VIP" blocked everyone else) and `MessageTemplate`
+`(name, language)` (templates belong to a WABA; several businesses register
+"order_ready" independently).
+
+**3. The duplicate check leaked a name.** `find_duplicate()` was unscoped, and the
+error read "*<their contact's name>* already uses this number" — handing a
+stranger a name out of a database they cannot otherwise see, one phone number at
+a time. Now scoped, in the service and the form both.
+
+### Deployment checks
+
+`check --deploy` gained `core.W001`: `FIELD_ENCRYPTION_KEY` unset means the key is
+derived from `SECRET_KEY`, which silently couples two unrelated rotations —
+changing `SECRET_KEY`, otherwise routine, would make every stored token
+permanently unreadable. Generate one with `python manage.py generate_encryption_key`.
+
+There is deliberately **no** warning for `PAYMENT_PROVIDER=mock`. It is the only
+implementation, so the check would be red on every run forever, and a check that
+is always red is one everybody learns to scroll past.
+
+### Not in this stage
+
+No self-service connection flow (Meta Embedded Signup), no per-number routing of
+outbound campaigns, no automatic token refresh. Accounts are entered in the admin
+and verified with `verify_live`.
+
+---
+
+## 30. The billing area
+
+Stage 6. Stages 3 to 5 built plans, usage, invoices and payments and gave the
+customer no way to see any of it. `/billing/` is where the person paying finds
+out what they are paying for.
+
+Four pages: an overview, the plan catalogue, an invoice list, and one invoice.
+
+### Reading is not changing
+
+Any member can see the bill. Only an owner or an administrator can change the
+plan or cancel. Hiding what the product costs from the people using it helps
+nobody; changing it is the part that needs a role — and that split already
+existed on `OrganizationMember.can_administer`, so this reuses it rather than
+inventing a second notion of who is in charge.
+
+A member who tries anyway is refused and told why, not silently redirected.
+
+### Every mutation is a POST
+
+Changing a plan, cancelling and resuming are all POST with CSRF. A plan-change
+link would be followed by every prefetcher and link scanner that saw it. A GET
+to the change-plan route returns **405**, not a redirect, so the mistake would be
+loud if anyone ever added one.
+
+`is_active=False` plans cannot be chosen by guessing a slug.
+
+### A downgrade that would not fit is refused, with the numbers
+
+> The Tiny plan allows 1 contacts and you have 3. Reduce them first, or choose a
+> larger plan.
+
+Checked against **live counts**, not against the old plan's limits — the question
+is not "is this smaller?" but "does what they have fit?". Moving from unlimited
+to 10,000 contacts is fine for somebody holding 500. Accepting a bad downgrade
+would leave a customer instantly over a ceiling they did not know they were
+choosing, unable to add a contact and unsure why.
+
+### Cancelling runs to the end of the period
+
+Cutting somebody off the moment they click takes away time they have already
+bought. The overview then offers **"Keep my subscription"** until the period ends,
+because a cancellation a month away is one people change their minds about.
+
+### Nothing is invented
+
+The rule the landing page has followed since Phase 8, applied to a page about
+money:
+
+| Situation | What the page says |
+|---|---|
+| Plan has no price | "Pricing on request" — never a fabricated figure |
+| Metric has no ceiling | "0 of unlimited", and **no progress bar** — a bar against no ceiling is meaningless, and 0% would imply one exists |
+| No invoices, unpriced plan | "quoted individually rather than charged automatically" |
+| No invoices, priced plan | "raised when the current billing period closes" |
+| Over a limit | "Over the limit by 2. You can still read everything; adding more is what is blocked." |
+| No subscription row | Says so, and still renders |
+
+An empty table styled like a real one reads as a bug. So does a 500 when a row
+is missing — the overview renders for an organization with no subscription and
+explains the state.
+
+The overage is computed in Python, not the template: Django's `add` filter cannot
+subtract, and the arithmetic that looks like it does is addition in disguise.
+
+### Invoices are scoped, and 404 for anyone else
+
+An invoice carries a business name, an amount and a period — the most sensitive
+document this application renders. `Invoice.objects.for_organization(...)` backs
+both the list and the detail view, so another tenant's invoice is a **404, not a
+403**: telling somebody a document exists but is not theirs confirms it exists.
+
+Failed payment attempts are shown, not hidden. "We tried twice" is a fact a
+customer may need explained, and hiding it makes a support conversation harder
+than it needs to be.
+
+### Not in this stage
+
+No PDF download, no payment-method entry (there is no gateway to enter one
+into), no self-service upgrade *checkout* — `change_plan` records the
+entitlement, and Stage 4's `collect()` bills it at the next period close.

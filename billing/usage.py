@@ -171,12 +171,17 @@ def summary(organization) -> dict:
     for metric, counter in COUNTERS.items():
         used = counter(organization)
         ceiling = plan.limit(metric) if plan else None
+        exceeded = bool(ceiling is not None and used > ceiling)
         metrics[metric] = {
             "used": used,
             "limit": ceiling,
             "remaining": plan.remaining(metric, used) if plan else None,
             "percent": None if not ceiling else min(100, round(used / ceiling * 100)),
-            "exceeded": bool(ceiling is not None and used > ceiling),
+            "exceeded": exceeded,
+            # Computed here rather than in a template: Django's `add` filter
+            # cannot subtract, and the arithmetic that looks like it does is
+            # addition wearing a disguise.
+            "over_by": (used - ceiling) if exceeded else 0,
         }
 
     return {

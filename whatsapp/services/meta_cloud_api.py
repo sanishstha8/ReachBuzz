@@ -52,7 +52,9 @@ logger = logging.getLogger(__name__)
 
 GRAPH_BASE_URL = "https://graph.facebook.com"
 
-# Settings that must be present before this provider can be used at all.
+# Settings that must be present for the *environment-configured* provider.
+# A provider built from a customer's messaging account is checked against that
+# account instead - see MetaWhatsAppProvider.check_configuration.
 REQUIRED_SETTINGS = (
     "META_API_VERSION",
     "META_ACCESS_TOKEN",
@@ -117,21 +119,68 @@ class MetaWhatsAppProvider(WhatsAppProvider):
     name = "meta"
     is_simulated = False
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        access_token: str | None = None,
+        phone_number_id: str | None = None,
+        waba_id: str | None = None,
+        account=None,
+    ):
+        """
+        Credentials come from a customer's account, or from the environment.
+
+        Passing them in is how Stage 5 made sending multi-tenant: a customer's
+        campaign goes out on their number, against their messaging limit, using
+        their token. The environment remains the fallback for a single-tenant
+        installation, which is every deployment that existed before this.
+
+        ``api_version`` is *not* per-account. One Meta App serves every tenant,
+        and the Graph version is a property of that app rather than of anybody's
+        WABA.
+        """
+        self.account = account
         self.api_version = getattr(settings, "META_API_VERSION", "")
-        self.phone_number_id = getattr(settings, "META_PHONE_NUMBER_ID", "")
-        self.waba_id = getattr(settings, "META_WABA_ID", "")
+        self.phone_number_id = phone_number_id or getattr(settings, "META_PHONE_NUMBER_ID", "")
+        self.waba_id = waba_id or getattr(settings, "META_WABA_ID", "")
         self.timeout = getattr(settings, "WHATSAPP_REQUEST_TIMEOUT", 30)
+
+        # Held on the instance, never re-read from settings, so that a provider
+        # built for one tenant cannot end up sending with another's token.
+        self._access_token = (
+            access_token if access_token is not None
+            else getattr(settings, "META_ACCESS_TOKEN", "")
+        )
 
     # -- Configuration ------------------------------------------------------
 
     def check_configuration(self) -> None:
-        """Fail by name, listing what is missing — but never printing a value."""
-        missing = [name for name in REQUIRED_SETTINGS if not getattr(settings, name, "")]
+        """
+        Fail by name, listing what is missing — but never printing a value.
+
+        Checks the *instance*, not the settings: a provider built from a
+        customer's account has to be judged on that account's credentials, and
+        checking settings would pass an organization whose token is empty
+        purely because the environment happens to have one.
+        """
+        missing = [
+            name
+            for name, value in (
+                ("META_API_VERSION", self.api_version),
+                ("access token", self._access_token),
+                ("phone number id", self.phone_number_id),
+            )
+            if not value
+        ]
         if missing:
+            where = (
+                f"messaging account {self.account.pk}"
+                if self.account is not None
+                else "the environment"
+            )
             raise ProviderNotConfigured(
                 "The Meta provider is missing required configuration: "
-                f"{', '.join(missing)}. Set these in your environment."
+                f"{', '.join(missing)}. Set these in {where}."
             )
 
     # -- HTTP ---------------------------------------------------------------
@@ -143,7 +192,7 @@ class MetaWhatsAppProvider(WhatsAppProvider):
     def _headers(self) -> dict[str, str]:
         """The only place the access token is ever read."""
         return {
-            "Authorization": f"Bearer {settings.META_ACCESS_TOKEN}",
+            "Authorization": f"Bearer {self._access_token}",
             "Content-Type": "application/json",
         }
 
@@ -249,7 +298,10 @@ class MetaWhatsAppProvider(WhatsAppProvider):
         """
         self.check_configuration()
         if not self.waba_id:
-            raise ProviderNotConfigured("Template sync requires META_WABA_ID to be set.")
+            raise ProviderNotConfigured(
+                "Template sync requires a WABA id, on the messaging account or in "
+                "the environment."
+            )
 
         url = f"{GRAPH_BASE_URL}/{self.api_version}/{self.waba_id}/message_templates"
         params: dict[str, Any] = {"limit": 100}
@@ -339,6 +391,11 @@ class MetaWhatsAppProvider(WhatsAppProvider):
                         )
                     )
 
+                # Which of our numbers this arrived on. One webhook URL serves
+                # every tenant, so this is how an inbound message is attributed
+                # to the right customer.
+                received_on = (value.get("metadata") or {}).get("phone_number_id", "")
+
                 for raw in value.get("messages") or []:
                     messages.append(
                         InboundMessage(
@@ -348,6 +405,7 @@ class MetaWhatsAppProvider(WhatsAppProvider):
                             text=((raw.get("text") or {}).get("body") or ""),
                             provider_message_id=raw.get("id", ""),
                             timestamp=_moment(raw.get("timestamp")),
+                            business_phone_number_id=received_on,
                             raw=raw,
                         )
                     )

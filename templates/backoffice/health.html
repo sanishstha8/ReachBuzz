@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Things that need a human, over the last seven days.</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-1">Failing quietly</h2>
+        <p class="small text-body-tertiary">
+          Nobody is told about these. Every hour they keep failing is another hour
+          of delivery reports going missing.
+        </p>
+        <ul class="list-unstyled mb-0">
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Webhook deliveries that errored</span>
+            <strong class="{% if health.webhooks_failed %}text-danger{% endif %}">{{ health.webhooks_failed }}</strong>
+          </li>
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Webhooks rejected for a bad signature</span>
+            <strong class="{% if health.webhooks_rejected %}text-warning{% endif %}">{{ health.webhooks_rejected }}</strong>
+          </li>
+          <li class="d-flex justify-content-between py-2">
+            <span>Payment attempts that failed</span>
+            <strong class="{% if health.payments_failed %}text-warning{% endif %}">{{ health.payments_failed }}</strong>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-1">Senders not verified</h2>
+        <p class="small text-body-tertiary">
+          These organizations fall back to the environment credentials, which on a
+          platform means sending on your number rather than theirs.
+        </p>
+        {% if health.senders_unverified %}
+          <ul class="list-unstyled small mb-0">
+            {% for sender in health.senders_unverified %}
+              <li class="d-flex justify-content-between border-bottom py-2">
+                <a href="{% url 'backoffice:organization-detail' sender.organization.pk %}">{{ sender.organization.name }}</a>
+                <span class="text-body-secondary">{{ sender.get_status_display }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">Every connected sender is verified.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-1">Subscriptions past due</h2>
+        <p class="small text-body-tertiary">
+          Still sending. Past due starts a conversation; it does not cut anyone off.
+        </p>
+        {% if health.subscriptions_past_due %}
+          <ul class="list-unstyled small mb-0">
+            {% for subscription in health.subscriptions_past_due %}
+              <li class="d-flex justify-content-between border-bottom py-2">
+                <a href="{% url 'backoffice:organization-detail' subscription.organization.pk %}">{{ subscription.organization.name }}</a>
+                <span class="text-body-secondary">{{ subscription.plan.name }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">Nothing past due.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-1">Overdue invoices</h2>
+        <p class="small text-body-tertiary">Issued, past the due date, still unpaid.</p>
+        {% if health.invoices_overdue %}
+          <ul class="list-unstyled small mb-0">
+            {% for invoice in health.invoices_overdue %}
+              <li class="d-flex justify-content-between border-bottom py-2">
+                <a href="{% url 'backoffice:organization-detail' invoice.organization.pk %}">{{ invoice.organization.name }}</a>
+                <span>{{ invoice.number }} &middot; {{ invoice.currency }} {{ invoice.total|floatformat:2 }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">Nothing overdue.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if health.organizations_without_subscription %}
+    <div class="col-12">
+      <div class="card border-danger">
+        <div class="card-body">
+          <h2 class="h6 text-danger text-uppercase small mb-1">Organizations with no subscription</h2>
+          <p class="small text-body-tertiary">
+            Their limits fall back to the default plan and nothing is billed. This is
+            a data problem, not a customer choice.
+          </p>
+          <ul class="list-unstyled small mb-0">
+            {% for org in health.organizations_without_subscription %}
+              <li class="border-bottom py-2">
+                <a href="{% url 'backoffice:organization-detail' org.pk %}">{{ org.name }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

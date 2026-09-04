@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Every customer on this installation.</p>
+{% endblock %}
+
+{% block content %}
+
+<form method="get" class="row g-2 align-items-end mb-4">
+  <div class="col-12 col-md-5">
+    <label for="q" class="form-label small text-body-secondary">Search</label>
+    <input type="search" id="q" name="q" value="{{ search }}" class="form-control"
+           placeholder="Business name, slug or owner email">
+  </div>
+  <div class="col-8 col-md-3">
+    <label for="status" class="form-label small text-body-secondary">Status</label>
+    <select id="status" name="status" class="form-select">
+      <option value="">Any</option>
+      {% for value, label in statuses %}
+        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-4 col-md-2">
+    <button type="submit" class="btn btn-primary w-100">Filter</button>
+  </div>
+  {% if search or status %}
+    <div class="col-12 col-md-2">
+      <a href="{% url 'backoffice:organizations' %}" class="btn btn-link btn-sm px-0">Clear</a>
+    </div>
+  {% endif %}
+</form>
+
+{% if organizations %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">Organization</th>
+            <th scope="col">Plan</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-end">Members</th>
+            <th scope="col" class="text-end">Contacts</th>
+            <th scope="col" class="text-end">Campaigns</th>
+            <th scope="col">Joined</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for org in organizations %}
+            <tr>
+              <td>
+                <a href="{% url 'backoffice:organization-detail' org.pk %}">{{ org.name }}</a>
+                <div class="small text-body-tertiary">{{ org.owner.email|default:"no owner" }}</div>
+              </td>
+              <td class="small">
+                {% if org.subscription %}
+                  {{ org.subscription.plan.name }}
+                {% else %}
+                  {# Not a blank cell: an organization with no subscription is a
+                     problem to fix, not a missing value. #}
+                  <span class="text-danger">none</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if org.subscription %}
+                  <span class="badge {% if org.subscription.status == 'active' %}text-bg-success{% elif org.subscription.status == 'trialing' %}text-bg-info{% elif org.subscription.status == 'past_due' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">
+                    {{ org.subscription.get_status_display }}
+                  </span>
+                {% else %}
+                  <span class="badge text-bg-light border">{{ org.get_status_display }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ org.member_count|intcomma }}</td>
+              <td class="text-end">{{ org.contact_count|intcomma }}</td>
+              <td class="text-end">{{ org.campaign_count|intcomma }}</td>
+              <td class="small text-body-secondary">{{ org.created_at|date:"j M Y" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% include "partials/pagination.html" %}
+{% else %}
+  <div class="card">
+    <div class="card-body text-center py-5">
+      <p class="mb-0 text-body-secondary">
+        {% if search or status %}
+          No organization matches that filter.
+        {% else %}
+          There are no organizations yet.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

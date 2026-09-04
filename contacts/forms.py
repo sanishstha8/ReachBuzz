@@ -50,10 +50,20 @@ class ContactForm(forms.ModelForm):
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, organization=None, **kwargs):
+        """
+        ``organization`` scopes the duplicate check and the group choices.
+
+        Both leaked across tenants without it: the duplicate error names the
+        existing contact, and the group dropdown listed every organization's
+        groups. Falls back to the instance's own organization when editing, so
+        a caller that forgets is still scoped rather than silently global.
+        """
         super().__init__(*args, **kwargs)
+        self.organization = organization or getattr(self.instance, "organization", None)
         self.fields["status"].choices = ContactStatus.choices
         self.fields["email"].required = False
+        self.fields["groups"].queryset = ContactGroup.objects.for_organization(self.organization)
 
         # NB: `self.instance.pk` is *not* a reliable "is this saved?" test here.
         # Contact's primary key has a uuid4 default, so an unsaved instance
@@ -81,7 +91,11 @@ class ContactForm(forms.ModelForm):
             raise forms.ValidationError(exc.message) from exc
 
         exclude_pk = None if self.instance._state.adding else self.instance.pk
-        duplicate = find_duplicate(e164, exclude_pk=exclude_pk)
+        # Scoped to this form's organization: the message names the existing
+        # contact, and naming another customer's contact would leak it.
+        duplicate = find_duplicate(
+            e164, organization=self.organization, exclude_pk=exclude_pk
+        )
         if duplicate is not None:
             raise forms.ValidationError(
                 f"{duplicate.name} already uses {e164}. Edit that contact instead."

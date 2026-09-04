@@ -119,6 +119,9 @@ class ContactCreateView(CapabilityRequiredMixin, PageTitleMixin, CreateView):
     page_title = "Add contact"
     active_nav = "contacts"
 
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), "organization": self.organization}
+
     def form_valid(self, form) -> HttpResponse:
         data = form.cleaned_data
         contact = services.create_contact(
@@ -144,6 +147,9 @@ class ContactUpdateView(CapabilityRequiredMixin, PageTitleMixin, UpdateView):
     template_name = "contacts/contact_form.html"
     required_capability = MANAGE_CONTACTS
     active_nav = "contacts"
+
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), "organization": self.organization}
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -80,7 +80,7 @@ class Contact(OrganizationOwnedModel, BaseModel):
     name = models.CharField(max_length=150, db_index=True)
     phone_number = models.CharField(
         max_length=20,
-        unique=True,
+        db_index=True,
         validators=[validate_phone_number],
         help_text=_("Stored in E.164 format, e.g. +9779800000000."),
     )
@@ -139,6 +139,14 @@ class Contact(OrganizationOwnedModel, BaseModel):
                 condition=models.Q(phone_number__startswith="+"),
                 name="contact_phone_is_e164",
             ),
+            # Unique *within* an organization, not across the installation.
+            # A global constraint here meant the second business to try to add
+            # a shared customer simply could not — and a person is routinely a
+            # customer of more than one business.
+            models.UniqueConstraint(
+                fields=["organization", "phone_number"],
+                name="unique_contact_phone_per_organization",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -193,7 +201,7 @@ class ContactGroupQuerySet(OrganizationScopedQuerySet):
 class ContactGroup(OrganizationOwnedModel, BaseModel):
     """A named list of contacts, used as a campaign audience."""
 
-    name = models.CharField(max_length=120, unique=True)
+    name = models.CharField(max_length=120, db_index=True)
     description = models.TextField(blank=True)
     contacts = models.ManyToManyField(
         Contact,
@@ -215,6 +223,14 @@ class ContactGroup(OrganizationOwnedModel, BaseModel):
         ordering = ["name"]
         verbose_name = _("contact group")
         verbose_name_plural = _("contact groups")
+        constraints = [
+            # One customer naming a group "VIP" must not stop every other
+            # customer from having one.
+            models.UniqueConstraint(
+                fields=["organization", "name"],
+                name="unique_group_name_per_organization",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name

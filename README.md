@@ -47,6 +47,7 @@ Business Platform Cloud API**.
 26. [Sign-up, email confirmation and password reset](#26-sign-up-email-confirmation-and-password-reset)
 27. [Plans, subscriptions and usage](#27-plans-subscriptions-and-usage)
 28. [Invoices and payments](#28-invoices-and-payments)
+29. [Per-organization messaging credentials](#29-per-organization-messaging-credentials)
 
 ---
 
@@ -512,7 +513,7 @@ full suite before the next one starts.
 | 2 | Registration, email confirmation, password reset | ✅ Complete — [§26](#26-sign-up-email-confirmation-and-password-reset) |
 | 3 | Plans, subscriptions, usage metering | ✅ Complete — [§27](#27-plans-subscriptions-and-usage) |
 | 4 | Payments and invoices | ✅ Complete — [§28](#28-invoices-and-payments) |
-| 5 | Per-organization messaging credentials | Not started |
+| 5 | Per-organization messaging credentials | ✅ Complete — [§29](#29-per-organization-messaging-credentials) |
 | 6 | Customer billing dashboard | Not started |
 | 7 | Platform admin dashboard | Not started |
 | 8 | Versioned API, notifications, hardening | Not started |
@@ -1480,3 +1481,103 @@ annoys the customer and, on some networks, counts against the merchant.
 No customer-facing billing page, no upgrade button, no PDF, no tax calculation,
 no refund initiation from our side (a refund arriving from the provider is
 handled; asking for one is not). Stage 6 builds the page.
+
+---
+
+## 29. Per-organization messaging credentials
+
+Stage 5, and the one that changes how sending works. Until now there was one
+WhatsApp Business Account for the whole installation, read from the environment.
+That is right for a single business running its own copy and wrong for a
+platform: a customer's messages must go out from **their** number, count against
+**their** messaging limit, and stop when **they** disconnect.
+
+### The split, and why it is not arbitrary
+
+| Where | What | Why |
+|---|---|---|
+| Environment | App id, app secret, webhook verify token, API version | One Meta App serves every tenant |
+| Database, encrypted | Access token, phone number id, WABA id | The customer's own |
+
+The webhook forces this split. Meta delivers every tenant's events to one URL,
+signed with the **app** secret — so verification has to happen before we know
+which organization an event belongs to. You cannot look up a per-tenant secret
+using a payload you have not yet authenticated. Routing happens afterwards, by
+the `phone_number_id` in the payload, which is why that column is unique.
+
+### Tokens are encrypted at rest
+
+`core/encryption.py`, Fernet, keyed by `FIELD_ENCRYPTION_KEY`. The project's rule
+was "credentials live in the environment"; multi-tenancy breaks that mechanism
+without changing its intent, because there is no environment variable for a
+thousand customers' tokens. So **the key lives in the environment and the secrets
+live encrypted under it** — a database dump alone reveals nothing.
+
+What it does not do: protect against the running application. A process that can
+decrypt can read. It protects backups, replicas and dumps, which is most of the
+realistic exposure.
+
+`access_token` is a **property, not a field**. It is absent from `_meta.fields`,
+so `ModelForm`, `ModelSerializer`, `values()` and the admin's default field list
+all skip it unless somebody names it deliberately. The admin shows `…mnop` — the
+last four characters, and only for a token long enough that four don't narrow it
+down.
+
+Decryption failure **raises**. An empty token handed to a provider looks like a
+configuration mistake at the far end, days later; an exception says what actually
+happened, now.
+
+### Resolving the sender
+
+`provider_for(organization)` → the organization's default active account, else
+the environment. **That fallback is what keeps every pre-Stage-5 installation
+working**, and it is also the thing to think hardest about before running this as
+a public platform: a customer with no account of their own would send on the
+deployment's number, limit and reputation.
+
+`WHATSAPP_REQUIRE_MESSAGING_ACCOUNT=True` turns it off. A platform wants that on;
+a business running its own copy wants it off, which is why off is the default —
+the alternative breaks every existing deployment on upgrade.
+
+Providers are built fresh every call, never cached. A cached provider holds one
+tenant's token and would hand it to the next caller.
+
+### Three cross-tenant defects this stage found and fixed
+
+Writing the isolation tests surfaced these. All three date from Stage 1.
+
+**1. An inbound STOP could withdraw the wrong customer's consent.** Two customers
+can hold the same person as a contact. The lookup matched on the sender's number
+alone and took whichever row came back first. Inbound messages now carry the
+business number they arrived on, and the lookup is scoped to that organization.
+This is the project's most sensitive invariant; it is now pinned by a test that
+asserts the *other* tenant's contact is untouched.
+
+**2. `Contact.phone_number` was globally unique.** The second business to try to
+add a shared customer simply could not. Now unique per organization — a person is
+routinely a customer of more than one business. Same for `ContactGroup.name` (one
+customer naming a group "VIP" blocked everyone else) and `MessageTemplate`
+`(name, language)` (templates belong to a WABA; several businesses register
+"order_ready" independently).
+
+**3. The duplicate check leaked a name.** `find_duplicate()` was unscoped, and the
+error read "*<their contact's name>* already uses this number" — handing a
+stranger a name out of a database they cannot otherwise see, one phone number at
+a time. Now scoped, in the service and the form both.
+
+### Deployment checks
+
+`check --deploy` gained `core.W001`: `FIELD_ENCRYPTION_KEY` unset means the key is
+derived from `SECRET_KEY`, which silently couples two unrelated rotations —
+changing `SECRET_KEY`, otherwise routine, would make every stored token
+permanently unreadable. Generate one with `python manage.py generate_encryption_key`.
+
+There is deliberately **no** warning for `PAYMENT_PROVIDER=mock`. It is the only
+implementation, so the check would be red on every run forever, and a check that
+is always red is one everybody learns to scroll past.
+
+### Not in this stage
+
+No self-service connection flow (Meta Embedded Signup), no per-number routing of
+outbound campaigns, no automatic token refresh. Accounts are entered in the admin
+and verified with `verify_live`.

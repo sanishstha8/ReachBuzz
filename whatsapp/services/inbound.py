@@ -178,7 +178,12 @@ def _handle_inbound(message) -> bool:
     if not is_stop_request(message.text):
         return False
 
-    contact = _find_contact(message.from_phone_number, normalize_phone_number, Contact)
+    contact = _find_contact(
+        message.from_phone_number,
+        normalize_phone_number,
+        Contact,
+        organization=_organization_for_inbound(message),
+    )
     if contact is None:
         logger.info("STOP received from a number that is not a contact; nothing to opt out.")
         return False
@@ -194,9 +199,47 @@ def _handle_inbound(message) -> bool:
     return True
 
 
-def _find_contact(raw_number: str, normalize, contact_model):
+def _organization_for_inbound(message):
     """
-    Find the contact behind an inbound number.
+    Whose customer sent this, decided by which of our numbers it arrived on.
+
+    One webhook URL serves every tenant, and two customers can legitimately hold
+    the same person as a contact. Matching on the sender's number alone would
+    therefore withdraw consent from whichever organization's row happened to
+    come back first — a consent bug, which is the one class of bug this
+    project treats as unacceptable.
+
+    Returns ``None`` when the receiving number is not one we have on file. The
+    caller then falls back to an unscoped match, which is correct for a
+    single-tenant installation — there is only one organization for the
+    contact to belong to — and is logged, because on a platform it means a
+    webhook arrived for a number nobody has connected.
+    """
+    from whatsapp.accounts import MessagingAccount
+
+    received_on = getattr(message, "business_phone_number_id", "")
+    if not received_on:
+        return None
+
+    account = (
+        MessagingAccount.objects.filter(phone_number_id=received_on)
+        .select_related("organization")
+        .first()
+    )
+    if account is None:
+        logger.warning(
+            "Inbound message arrived on phone number id %s, which no messaging "
+            "account claims.",
+            received_on,
+        )
+        return None
+
+    return account.organization
+
+
+def _find_contact(raw_number: str, normalize, contact_model, *, organization=None):
+    """
+    Find the contact behind an inbound number, within one organization.
 
     Meta reports the sender without a leading "+", and we store E.164, so the
     number is normalised before matching rather than compared as text.
@@ -210,4 +253,7 @@ def _find_contact(raw_number: str, normalize, contact_model):
     except Exception:  # noqa: BLE001 - an unparseable number is just a miss
         logger.debug("Inbound number could not be normalised; matching on the raw form.")
 
-    return contact_model.objects.filter(phone_number__in=candidates).first()
+    queryset = contact_model.objects.filter(phone_number__in=candidates)
+    if organization is not None:
+        queryset = queryset.filter(organization=organization)
+    return queryset.first()

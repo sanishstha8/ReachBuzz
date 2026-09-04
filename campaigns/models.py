@@ -14,6 +14,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 from contacts.models import ContactGroup
+from core.channels import DEFAULT_CHANNEL, Channel
 from core.models import BaseModel
 from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 from whatsapp.models import MessageTemplate
@@ -94,6 +95,18 @@ class CampaignQuerySet(OrganizationScopedQuerySet):
 class Campaign(OrganizationOwnedModel, BaseModel):
     name = models.CharField(max_length=150, db_index=True)
     description = models.TextField(blank=True)
+
+    # Which channel this campaign goes out over. Chosen once, at creation, and
+    # not changed afterwards: the audience was resolved against this channel's
+    # consent, so switching it would send to people who never agreed to be
+    # reached that way.
+    channel = models.CharField(
+        _("channel"),
+        max_length=16,
+        choices=Channel.choices,
+        default=DEFAULT_CHANNEL,
+        db_index=True,
+    )
 
     message_type = models.CharField(
         max_length=16,

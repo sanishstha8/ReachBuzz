@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    Owned by {{ organization.owner.email|default:"nobody" }} &middot; joined {{ organization.created_at|date:"j F Y" }}
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<p class="mb-3">
+  <a href="{% url 'backoffice:organizations' %}" class="small">
+    <i class="bi bi-arrow-left" aria-hidden="true"></i> All organizations
+  </a>
+</p>
+
+<div class="alert alert-secondary d-flex gap-3 align-items-start" role="note">
+  <i class="bi bi-shield-lock fs-5" aria-hidden="true"></i>
+  <div class="small">
+    <strong>This visit has been recorded against {{ organization.name }}.</strong>
+    Counts and statuses only &mdash; message content and full contact numbers are
+    not shown here, and cannot be.
+  </div>
+</div>
+
+<div class="row g-4">
+  {# ---------------------------------------------------------- account #}
+  <div class="col-12 col-lg-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Account</h2>
+        <dl class="row small mb-0">
+          <dt class="col-5 fw-normal text-body-secondary">Slug</dt>
+          <dd class="col-7 text-end"><code>{{ organization.slug }}</code></dd>
+
+          <dt class="col-5 fw-normal text-body-secondary">Status</dt>
+          <dd class="col-7 text-end">{{ organization.get_status_display }}</dd>
+
+          <dt class="col-5 fw-normal text-body-secondary">Timezone</dt>
+          <dd class="col-7 text-end">{{ organization.timezone }}</dd>
+
+          <dt class="col-5 fw-normal text-body-secondary">Plan</dt>
+          <dd class="col-7 text-end">
+            {% if usage.plan %}{{ usage.plan.name }}{% else %}<span class="text-danger">none</span>{% endif %}
+          </dd>
+
+          <dt class="col-5 fw-normal text-body-secondary">Subscription</dt>
+          <dd class="col-7 text-end">
+            {% if usage.subscription %}
+              {{ usage.subscription.get_status_display }}
+            {% else %}
+              <span class="text-danger">missing</span>
+            {% endif %}
+          </dd>
+
+          {% if usage.subscription %}
+            <dt class="col-5 fw-normal text-body-secondary">Period ends</dt>
+            <dd class="col-7 text-end">{{ usage.subscription.current_period_end|date:"j M Y" }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ usage #}
+  <div class="col-12 col-lg-8">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Usage this period</h2>
+        {% include "billing/_usage_meter.html" with label="Messages" metric=usage.metrics.max_messages_per_month %}
+        {% include "billing/_usage_meter.html" with label="Contacts" metric=usage.metrics.max_contacts %}
+        {% include "billing/_usage_meter.html" with label="Team members" metric=usage.metrics.max_team_members %}
+
+        <div class="row text-center small mt-2">
+          <div class="col">
+            <div class="h5 mb-0">{{ counts.opted_in|intcomma }}</div>
+            <div class="text-body-tertiary">opted in</div>
+          </div>
+          <div class="col">
+            <div class="h5 mb-0">{{ counts.campaigns|intcomma }}</div>
+            <div class="text-body-tertiary">campaigns</div>
+          </div>
+          <div class="col">
+            <div class="h5 mb-0">{{ counts.sent_recently|intcomma }}</div>
+            <div class="text-body-tertiary">sent recently</div>
+          </div>
+          <div class="col">
+            <div class="h5 mb-0 {% if counts.failed_recently %}text-danger{% endif %}">
+              {{ counts.failed_recently|intcomma }}
+            </div>
+            <div class="text-body-tertiary">failed recently</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ---------------------------------------------------------- members #}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Members</h2>
+        <ul class="list-unstyled small mb-0">
+          {% for member in members %}
+            <li class="d-flex justify-content-between border-bottom py-2">
+              <span>{{ member.user.email }}</span>
+              <span class="text-body-secondary">{{ member.get_role_display }}</span>
+            </li>
+          {% empty %}
+            <li class="text-danger">Nobody is a member of this organization.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  {# ---------------------------------------------------------- senders #}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">WhatsApp senders</h2>
+        {% if senders %}
+          <ul class="list-unstyled small mb-0">
+            {% for sender in senders %}
+              <li class="border-bottom py-2">
+                <div class="d-flex justify-content-between">
+                  <span>{{ sender }}</span>
+                  <span class="text-body-secondary">{{ sender.get_status_display }}</span>
+                </div>
+                {# The hint, never the token. Four characters identify it
+                   without being it. #}
+                <div class="text-body-tertiary">
+                  {{ sender.provider }} &middot; token {{ sender.token_hint }}
+                  {% if sender.last_error %}
+                    <br><span class="text-danger">{{ sender.last_error }}</span>
+                  {% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">
+            No sender connected. This organization falls back to the environment
+            credentials.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# -------------------------------------------------------- campaigns #}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Recent campaigns</h2>
+        {% if campaigns %}
+          <ul class="list-unstyled small mb-0">
+            {% for campaign in campaigns %}
+              <li class="d-flex justify-content-between border-bottom py-2">
+                <span>{{ campaign.name }}</span>
+                <span class="text-body-secondary">
+                  {{ campaign.get_status_display }} &middot; {{ campaign.total_recipients|intcomma }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">No campaigns yet.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# --------------------------------------------------------- invoices #}
+  <div class="col-12 col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Invoices</h2>
+        {% if invoices %}
+          <ul class="list-unstyled small mb-0">
+            {% for invoice in invoices %}
+              <li class="d-flex justify-content-between border-bottom py-2">
+                <span>{{ invoice.number }}</span>
+                <span class="text-body-secondary">
+                  {{ invoice.currency }} {{ invoice.total|floatformat:2|intcomma }}
+                  &middot; {{ invoice.get_status_display }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="mb-0 text-body-secondary">
+            No invoices.
+            {% if usage.plan and not usage.plan.has_price %}
+              This plan has no price set, so nothing is billed automatically.
+            {% endif %}
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

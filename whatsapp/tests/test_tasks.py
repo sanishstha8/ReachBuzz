@@ -43,9 +43,14 @@ def patch_provider(result: SendResult | list[SendResult]):
         def send_text(self, **kwargs):
             return self.send_template(**kwargs)
 
+        def check_configuration(self):
+            """Both provider base classes define this; a stub standing in for
+            one has to as well, or launch refuses it as unconfigurable."""
+            return None
+
     stub = _Stub()
     stub.calls = []
-    return patch("whatsapp.tasks.provider_for", return_value=stub), stub
+    return patch("messaging.routing.sender_for", return_value=stub), stub
 
 
 class TestDispatchCampaign:
@@ -259,7 +264,7 @@ class TestFailureHandling:
             def send_template(self, **kwargs):
                 raise NotImplementedError("Phase 7")
 
-        with patch("whatsapp.tasks.provider_for", return_value=_Unimplemented()):
+        with patch("messaging.routing.sender_for", return_value=_Unimplemented()):
             result = tasks.send_message_task(str(message.pk))
 
         message.refresh_from_db()

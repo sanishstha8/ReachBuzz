@@ -75,6 +75,11 @@ class AuditAction(models.TextChoices):
     INVOICE_PAID = "invoice_paid", "Invoice paid"
     INVOICE_VOIDED = "invoice_voided", "Invoice voided"
 
+    # Somebody who works for the platform opened a customer's account. Reading
+    # across the tenant boundary is a privacy event, not a page view, so
+    # "who has looked at this customer?" needs an answer.
+    BACKOFFICE_VIEWED = "backoffice_viewed", "Customer account viewed by staff"
+
 
 class AuditLog(UUIDPrimaryKeyModel):
     """

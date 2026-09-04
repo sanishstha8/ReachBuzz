@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">
+    Every organization on this installation. Figures cover the last {{ overview.since|timesince }}.
+  </p>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-secondary d-flex gap-3 align-items-start" role="note">
+  <i class="bi bi-eye fs-5" aria-hidden="true"></i>
+  <div>
+    <strong>This is the one place that reads across the tenant boundary.</strong>
+    Opening a customer's account is recorded against them. Message content is not
+    shown here and cannot be.
+  </div>
+</div>
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">Customers</h2>
+<div class="row g-3 mb-4">
+  {% include "backoffice/_stat.html" with label="Organizations" value=overview.organizations.total hint="all time" %}
+  {% include "backoffice/_stat.html" with label="Active" value=overview.organizations.active hint="not suspended" %}
+  {% include "backoffice/_stat.html" with label="New" value=overview.organizations.new_this_period hint="this period" %}
+  {% include "backoffice/_stat.html" with label="No subscription" value=overview.subscriptions.missing hint="needs attention" tone=overview.subscriptions.missing|yesno:"text-danger," %}
+</div>
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">Subscriptions</h2>
+<div class="row g-3 mb-4">
+  {% include "backoffice/_stat.html" with label="Active" value=overview.subscriptions.active %}
+  {% include "backoffice/_stat.html" with label="Trialing" value=overview.subscriptions.trialing %}
+  {% include "backoffice/_stat.html" with label="Past due" value=overview.subscriptions.past_due hint="still sending" tone=overview.subscriptions.past_due|yesno:"text-warning," %}
+  {% include "backoffice/_stat.html" with label="Cancelling" value=overview.subscriptions.cancelling hint="at period end" %}
+</div>
+
+<h2 class="h6 text-body-secondary text-uppercase small mb-2">Activity and money</h2>
+<div class="row g-3 mb-4">
+  {% include "backoffice/_stat.html" with label="Messages sent" value=overview.messages.sent hint="this period" %}
+  {% include "backoffice/_stat.html" with label="Messages failed" value=overview.messages.failed hint="this period" %}
+  {% include "backoffice/_stat.html" with label="Invoices open" value=overview.money.outstanding_count hint="awaiting payment" %}
+  {% include "backoffice/_stat.html" with label="Overdue" value=overview.money.overdue_count hint="past the due date" tone=overview.money.overdue_count|yesno:"text-danger," %}
+</div>
+
+<div class="row g-4">
+  <div class="col-12 col-lg-7">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Plans</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Plan</th>
+                <th scope="col">Price</th>
+                <th scope="col" class="text-end">Subscribers</th>
+                <th scope="col" class="text-end">Active</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in plans %}
+                <tr>
+                  <td>
+                    {{ row.plan.name }}
+                    {% if not row.plan.is_public %}<span class="badge text-bg-light border">hidden</span>{% endif %}
+                  </td>
+                  <td class="small text-body-secondary">
+                    {% if row.plan.has_price %}{{ row.plan.price_display }}{% else %}on request{% endif %}
+                  </td>
+                  <td class="text-end">{{ row.count|intcomma }}</td>
+                  <td class="text-end">{{ row.active|intcomma }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="text-body-secondary">No plans configured.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-baseline mb-3">
+          <h2 class="h6 text-body-secondary text-uppercase small mb-0">Needs a human</h2>
+          <a href="{% url 'backoffice:health' %}" class="small">Details</a>
+        </div>
+        <ul class="list-unstyled small mb-0">
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Webhooks failed</span><strong>{{ health.webhooks_failed }}</strong>
+          </li>
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Webhooks rejected</span><strong>{{ health.webhooks_rejected }}</strong>
+          </li>
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Payments failed</span><strong>{{ health.payments_failed }}</strong>
+          </li>
+          <li class="d-flex justify-content-between border-bottom py-2">
+            <span>Subscriptions past due</span><strong>{{ health.subscriptions_past_due|length }}</strong>
+          </li>
+          <li class="d-flex justify-content-between py-2">
+            <span>Senders unverified</span><strong>{{ health.senders_unverified|length }}</strong>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="mt-4 mb-0">
+  <a href="{% url 'backoffice:organizations' %}" class="btn btn-sm btn-primary">Browse organizations</a>
+</p>
+
+{% endblock %}

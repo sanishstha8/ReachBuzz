@@ -49,6 +49,7 @@ Business Platform Cloud API**.
 28. [Invoices and payments](#28-invoices-and-payments)
 29. [Per-organization messaging credentials](#29-per-organization-messaging-credentials)
 30. [The billing area](#30-the-billing-area)
+31. [The backoffice](#31-the-backoffice)
 
 ---
 
@@ -516,7 +517,7 @@ full suite before the next one starts.
 | 4 | Payments and invoices | ✅ Complete — [§28](#28-invoices-and-payments) |
 | 5 | Per-organization messaging credentials | ✅ Complete — [§29](#29-per-organization-messaging-credentials) |
 | 6 | Customer billing dashboard | ✅ Complete — [§30](#30-the-billing-area) |
-| 7 | Platform admin dashboard | Not started |
+| 7 | Platform admin dashboard | ✅ Complete — [§31](#31-the-backoffice) |
 | 8 | Versioned API, notifications, hardening | Not started |
 | 9 | SMS channel | Not started |
 
@@ -1666,3 +1667,92 @@ than it needs to be.
 No PDF download, no payment-method entry (there is no gateway to enter one
 into), no self-service upgrade *checkout* — `change_plan` records the
 entitlement, and Stage 4's `collect()` bills it at the next period close.
+
+---
+
+## 31. The backoffice
+
+Stage 7, at `/backoffice/`. **This is the only part of the application that reads
+across the tenant boundary on purpose.** Everywhere else, a query without an
+organization filter is a bug; here it is the job. That inversion is what the
+whole design of this app is arranged around.
+
+Four pages: a platform overview, an organization list, one organization, and a
+health page.
+
+### The gate is `is_staff`, not `User.role`
+
+`role` says what somebody may do inside the product. `is_staff` says they work
+for whoever runs it. Stage 1 separated those precisely so a customer's own
+administrator could never end up reading somebody else's data, and this is the
+stage where that separation earns its keep.
+
+`is_staff` is settable only through Django's admin, which already requires
+`is_staff` — so **this app grants no capability its users did not already have.**
+It is a better window onto data they can reach anyway, not a wider one. Tests
+assert that an organization *owner* and a `UserRole.ADMINISTRATOR` are both
+refused.
+
+A signed-in customer who guesses the URL gets **404, not 403**: a 403 confirms
+something exists at that address. An anonymous visitor gets the ordinary sign-in
+redirect, which leaks nothing the login page does not. The nav link is hidden
+rather than disabled, because a greyed-out "Platform" item would tell every
+customer a cross-tenant view exists.
+
+### Looking is recorded
+
+Opening a customer's page is a privacy event, not a page view. It writes an
+audit entry naming who looked and what they looked at, **before the page
+renders**, so a template error does not lose the record. "Who has read this
+customer's account?" has to have an answer.
+
+The staff check runs *before* the target is resolved. Otherwise a stranger's
+request would run the lookup and write an entry naming a customer they have no
+right to see.
+
+The aggregate pages are **not** audited. A count of organizations is not a look
+at any particular customer, and auditing every dashboard refresh would bury the
+entries that matter. That is only defensible while those pages identify nobody —
+so a test asserts the overview names no organization.
+
+### Two things it cannot do
+
+Enforced by never building them, and pinned by tests:
+
+- **No message content.** An operator can see that a campaign ran, how many
+  recipients it had and how many failed. They cannot read a line the customer
+  wrote, or see a contact's name or number. Support work needs aggregates;
+  reading correspondence is a different power and nobody asked for it.
+- **No impersonation.** There is no "sign in as this customer" button.
+
+Access tokens show as `…mnop` — the hint identifies a sender without being one.
+
+### Read-only, by omission
+
+No form, no POST route, no action button. Every page returns **405** to a POST,
+which is asserted as behaviour rather than checked in markup. Editing belongs in
+Django admin, which has its own audit trail and permission model; duplicating it
+here would mean two places to get authorization wrong instead of one.
+
+### Every unscoped query lives in one file
+
+`backoffice/services.py`, and nowhere else. Scattered through a views module,
+those queries would look exactly like the mistakes they resemble. Collected in
+one file whose docstring says what they are, a reviewer knows that an unscoped
+query *anywhere else* is almost certainly a bug, and that one *here* needs
+checking for a different thing: that it returns aggregates and metadata rather
+than anybody's content.
+
+The organization list annotates its counts rather than fetching per row — a
+hundred organizations at four lookups each is four hundred queries, and an
+operations page that takes ten seconds is one nobody opens.
+
+### The health page is ordered by how quietly things fail
+
+A past-due subscription eventually announces itself to the customer. A webhook
+that has been failing for three days announces itself to nobody, and every hour
+it keeps failing is another hour of delivery reports going missing. So that
+comes first.
+
+An installation with nothing wrong says "Nothing past due" rather than showing
+an empty list styled like a real one.

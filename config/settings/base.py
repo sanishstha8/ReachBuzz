@@ -75,6 +75,7 @@ LOCAL_APPS = [
     "messaging.apps.MessagingConfig",
     "dashboard.apps.DashboardConfig",
     "pages.apps.PagesConfig",
+    "backoffice.apps.BackofficeConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

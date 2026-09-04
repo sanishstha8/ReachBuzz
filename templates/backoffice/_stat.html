@@ -1,0 +1,17 @@
+{% load humanize %}
+{% comment %}
+One figure. `value` of None renders an em dash, never a zero: "nothing has
+happened" and "we cannot tell you" are different claims, and this project has
+made that distinction since Phase 6.
+{% endcomment %}
+<div class="col-6 col-lg-3">
+  <div class="card h-100">
+    <div class="card-body py-3">
+      <p class="text-body-secondary text-uppercase small mb-1">{{ label }}</p>
+      <p class="h4 mb-0 {{ tone }}">
+        {% if value is None %}<span class="text-body-tertiary">—</span>{% else %}{{ value|intcomma }}{% endif %}
+      </p>
+      {% if hint %}<p class="small text-body-tertiary mb-0">{{ hint }}</p>{% endif %}
+    </div>
+  </div>
+</div>

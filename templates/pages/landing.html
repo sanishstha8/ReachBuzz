@@ -202,6 +202,7 @@ policy), it is left out rather than pointed at a 404.
   </section>
 
   {# ------------------------------------------------------------- pricing #}
+  {% if tiers %}
   <section class="mk-section mk-section--tint" id="pricing" aria-labelledby="pricingHeading">
     <div class="container">
       <div class="mk-section__head">
@@ -226,7 +227,7 @@ policy), it is left out rather than pointed at a 404.
               <h3>{{ tier.name }}</h3>
 
               {% if tier.has_price %}
-                <div class="mk-tier__price">{{ tier.price }}</div>
+                <div class="mk-tier__price">{{ tier.price_display }}</div>
                 {% if tier.period %}<div class="mk-tier__period">{{ tier.period }}</div>{% endif %}
               {% else %}
                 {# No figure has been set. Saying so beats inventing one. #}
@@ -253,6 +254,7 @@ policy), it is left out rather than pointed at a 404.
       </p>
     </div>
   </section>
+  {% endif %}
 
   {# ----------------------------------------------------------------- faq #}
   <section class="mk-section" id="faq" aria-labelledby="faqHeading">

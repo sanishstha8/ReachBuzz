@@ -6,14 +6,19 @@ about the product rather than operating it. Two rules follow from that.
 
 **Nothing here may claim a capability the system does not have.** The page is
 marketing, but it is marketing for software whose whole design is about not
-overstating things — a landing page promising a self-service signup that does
-not exist would be the same failure as a dashboard showing a fabricated zero.
-Every feature listed below is one you can point at in the codebase.
+overstating things — a page promising a flow that does not exist is the same
+failure as a dashboard showing a fabricated zero. Every feature listed below is
+one you can point at in the codebase. The call to action read "Request access"
+until self-service signup was actually built, and only then became "Get
+started".
 
-**Prices are data, not prose.** ``PRICING_TIERS`` carries ``price = None``
-until someone sets a real figure, and the template renders "Pricing on
-request" for a tier without one. Inventing a number to fill the layout is the
-one thing this file will not do.
+**Prices are data, not prose — and now they are rows.** Tiers come from
+``billing.models.Plan``, so what this page advertises is what ``billing.usage``
+enforces. They were a hard-coded tuple in this file until Stage 3, which meant
+the page could promise "Up to 1,000 contacts" while nothing counted them. A plan
+carries ``price = None`` until someone sets a real figure, and the template
+renders "Pricing on request" for a tier without one. Inventing a number to fill
+the layout is the one thing this file will not do.
 """
 
 from __future__ import annotations
@@ -22,6 +27,8 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.views.generic import TemplateView
+
+from billing.models import Plan
 
 
 @dataclass(frozen=True)
@@ -36,20 +43,6 @@ class Step:
     icon: str
     title: str
     body: str
-
-
-@dataclass(frozen=True)
-class Tier:
-    name: str
-    price: str | None
-    period: str
-    summary: str
-    features: tuple[str, ...]
-    featured: bool = False
-
-    @property
-    def has_price(self) -> bool:
-        return bool(self.price)
 
 
 @dataclass(frozen=True)
@@ -112,51 +105,6 @@ STEPS: tuple[Step, ...] = (
     Step("bar-chart", "Watch it land", "Delivery and read receipts stream back from WhatsApp and update the campaign live."),
 )
 
-# price = None renders as "Pricing on request". Set a real figure when there is
-# one; do not invent a placeholder that looks like a decision has been made.
-PRICING_TIERS: tuple[Tier, ...] = (
-    Tier(
-        name="Starter",
-        price=None,
-        period="per month",
-        summary="For a single team sending occasional campaigns.",
-        features=(
-            "Up to 1,000 contacts",
-            "CSV import and contact groups",
-            "Approved template messaging",
-            "Delivery and read reporting",
-            "Email support",
-        ),
-    ),
-    Tier(
-        name="Business",
-        price=None,
-        period="per month",
-        summary="For regular campaigns to a growing audience.",
-        features=(
-            "Up to 10,000 contacts",
-            "Everything in Starter",
-            "Scheduled campaigns",
-            "CSV exports and the reporting API",
-            "Role-based access for your team",
-        ),
-        featured=True,
-    ),
-    Tier(
-        name="Self-hosted",
-        price=None,
-        period="",
-        summary="Run it on your own infrastructure, against your own WABA.",
-        features=(
-            "No contact limit",
-            "Your database, your Redis, your logs",
-            "Full REST API and OpenAPI schema",
-            "Connect your own Meta Business account",
-            "Deployment guidance",
-        ),
-    ),
-)
-
 FAQ: tuple[Question, ...] = (
     Question(
         "Do I need my own WhatsApp Business account?",
@@ -210,8 +158,15 @@ class LandingView(TemplateView):
         context = super().get_context_data(**kwargs)
         context["features"] = FEATURES
         context["steps"] = STEPS
-        context["tiers"] = PRICING_TIERS
         context["faq"] = FAQ
         context["support_email"] = getattr(settings, "SUPPORT_EMAIL", "")
-        context["any_price_set"] = any(tier.has_price for tier in PRICING_TIERS)
+
+        # Read from the plan catalogue rather than from a tuple in this file.
+        # The limits advertised here are the limits actually enforced, because
+        # they are now the same rows - a promise on this page and a ceiling in
+        # billing.usage can no longer drift apart, which they could while the
+        # copy said "Up to 1,000 contacts" and nothing checked.
+        tiers = list(Plan.objects.public())
+        context["tiers"] = tiers
+        context["any_price_set"] = any(tier.has_price for tier in tiers)
         return context

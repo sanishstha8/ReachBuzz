@@ -50,9 +50,19 @@ def normalize_contact_phone(raw: str, default_region: str | None = None) -> tupl
     return parsed.e164, parsed.country_code
 
 
-def find_duplicate(phone_e164: str, *, exclude_pk=None) -> Contact | None:
-    """Return the existing contact holding ``phone_e164``, if any."""
+def find_duplicate(phone_e164: str, *, organization=None, exclude_pk=None) -> Contact | None:
+    """
+    Return this organization's contact holding ``phone_e164``, if any.
+
+    **Scoped, and that is a security fix rather than a tidy-up.** Unscoped, the
+    duplicate check found another customer's contact and the resulting error
+    said "<their contact's name> already uses this number" — which handed a
+    stranger a name from a database they cannot otherwise see, one phone number
+    at a time.
+    """
     queryset = Contact.objects.filter(phone_number=phone_e164)
+    if organization is not None:
+        queryset = queryset.filter(organization=organization)
     if exclude_pk is not None:
         queryset = queryset.exclude(pk=exclude_pk)
     return queryset.first()
@@ -91,7 +101,7 @@ def create_contact(
     # about the ceiling rather than about whichever error happens to fire first.
     quotas.check(organization, "max_contacts")
 
-    existing = find_duplicate(e164)
+    existing = find_duplicate(e164, organization=organization)
     if existing is not None:
         raise ConflictError(
             f"A contact with the phone number {e164} already exists.",
@@ -158,7 +168,9 @@ def update_contact(
     if "phone_number" in fields and fields["phone_number"]:
         e164, dialling_code = normalize_contact_phone(fields["phone_number"], default_region)
         if e164 != contact.phone_number:
-            duplicate = find_duplicate(e164, exclude_pk=contact.pk)
+            duplicate = find_duplicate(
+                e164, organization=contact.organization, exclude_pk=contact.pk
+            )
             if duplicate is not None:
                 raise ConflictError(
                     f"A contact with the phone number {e164} already exists.",

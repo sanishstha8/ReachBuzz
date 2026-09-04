@@ -22,3 +22,8 @@ whitenoise>=6.9
 
 # HTTP client for the Meta Cloud API (Phase 7)
 requests>=2.32
+
+# Encryption at rest for per-organization provider credentials (Stage 5).
+# Those tokens cannot live in the environment once each customer has their own,
+# so they live in the database encrypted with a key that does.
+cryptography>=44.0

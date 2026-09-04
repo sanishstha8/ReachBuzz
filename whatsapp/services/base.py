@@ -98,6 +98,11 @@ class InboundMessage:
     text: str
     provider_message_id: str = ""
     timestamp: datetime | None = None
+    #: The *business* number the message arrived on, as the provider's own id.
+    #: This is what says which customer it belongs to: one webhook URL serves
+    #: every tenant, and two customers can hold the same person as a contact.
+    #: Without it, an inbound STOP could withdraw the wrong customer's consent.
+    business_phone_number_id: str = ""
     raw: dict = field(default_factory=dict)
 
 

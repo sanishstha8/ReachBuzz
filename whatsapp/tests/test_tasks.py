@@ -45,7 +45,7 @@ def patch_provider(result: SendResult | list[SendResult]):
 
     stub = _Stub()
     stub.calls = []
-    return patch("whatsapp.tasks.get_provider", return_value=stub), stub
+    return patch("whatsapp.tasks.provider_for", return_value=stub), stub
 
 
 class TestDispatchCampaign:
@@ -259,7 +259,7 @@ class TestFailureHandling:
             def send_template(self, **kwargs):
                 raise NotImplementedError("Phase 7")
 
-        with patch("whatsapp.tasks.get_provider", return_value=_Unimplemented()):
+        with patch("whatsapp.tasks.provider_for", return_value=_Unimplemented()):
             result = tasks.send_message_task(str(message.pk))
 
         message.refresh_from_db()

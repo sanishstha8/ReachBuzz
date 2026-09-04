@@ -76,6 +76,7 @@ LOCAL_APPS = [
     "dashboard.apps.DashboardConfig",
     "pages.apps.PagesConfig",
     "backoffice.apps.BackofficeConfig",
+    "sms.apps.SmsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -326,6 +327,21 @@ META_WABA_ID = env("META_WABA_ID", default="")
 META_APP_ID = env("META_APP_ID", default="")
 META_APP_SECRET = env("META_APP_SECRET", default="")
 META_WEBHOOK_VERIFY_TOKEN = env("META_WEBHOOK_VERIFY_TOKEN", default="")
+
+# --- SMS ---------------------------------------------------------------------
+# Only "mock" is implemented. A real gateway needs an account, a registered
+# sender id and, in several countries, regulatory paperwork; a half-written
+# integration against one is worse than an honest absence.
+SMS_PROVIDER = env("SMS_PROVIDER", default="mock")
+
+# The originator a recipient sees. Installation-wide for now: per-organization
+# sender ids are a later job. Empty means "let the gateway decide", which is
+# normal - many networks override it anyway, and several require it registered.
+SMS_SENDER_ID = env("SMS_SENDER_ID", default="")
+
+# How often the mock pretends a send failed, so the retry path can be seen
+# locally. 0.0 in production, always.
+MOCK_SMS_FAILURE_RATE = env.float("MOCK_SMS_FAILURE_RATE", default=0.0)
 
 # --- Payments --------------------------------------------------------------
 # Only "mock" is implemented. Adding a real gateway means merchant credentials

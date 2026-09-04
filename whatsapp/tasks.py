@@ -25,9 +25,10 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from campaigns.models import Campaign, CampaignMessageType, CampaignStatus
+from campaigns.models import Campaign, CampaignStatus
 from campaigns.services import finalize_if_complete
 from core.exceptions import ProviderNotConfigured
+from messaging import routing
 from messaging.models import CLAIMABLE_STATUSES, Message, MessageStatus, StatusEventSource
 from messaging.services import (
     StatusUpdate,
@@ -38,7 +39,7 @@ from messaging.services import (
     release_claim,
     schedule_retry,
 )
-from whatsapp.services.factory import is_simulated, provider_for
+from whatsapp.services.factory import is_simulated
 from whatsapp.services.rate_limiter import get_rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -172,26 +173,29 @@ def send_message_task(self, message_id: str) -> str:
         raise self.retry(countdown=acquisition.retry_after, max_retries=None)
 
     # --- send --------------------------------------------------------------
-    # Resolved per message, from the owning organization. A campaign goes out on
-    # that customer's number, against their messaging limit — which is the
-    # whole point of Stage 5, and the reason this is not hoisted out of the loop
-    # or cached: two messages in the same worker can belong to two tenants.
+    # Resolved per message, from its channel and its owning organization. A
+    # WhatsApp campaign goes out on that customer's number against their
+    # messaging limit; an SMS goes through the configured gateway. Not hoisted
+    # out or cached: two messages in one worker can belong to two tenants and
+    # two channels.
+    attempt = message.attempt_count + 1
+
     try:
-        provider = provider_for(message.organization)
+        result = routing.send(message)
     except ProviderNotConfigured as exc:
         release_claim(message, to_status=MessageStatus.QUEUED)
         logger.error("send_message: no usable sender for message %s: %s", message_id, exc)
         return "provider-not-configured"
-
-    attempt = message.attempt_count + 1
-
-    try:
-        result = _send(provider, message)
     except NotImplementedError as exc:
         # A provider that is configured but not implemented is a deployment
         # mistake, not a per-message failure: do not retry it 1,000 times.
         release_claim(message, to_status=MessageStatus.QUEUED)
-        logger.error("send_message: provider %s cannot send: %s", provider.name, exc)
+        logger.error(
+            "send_message: the %s provider cannot send message %s: %s",
+            message.channel,
+            message_id,
+            exc,
+        )
         return "provider-not-implemented"
     except Exception as exc:
         logger.exception("send_message: unexpected error sending %s", message_id)
@@ -227,26 +231,6 @@ def send_message_task(self, message_id: str) -> str:
         retryable=result.retryable,
         retry_after=result.retry_after,
         raw=result.raw,
-    )
-
-
-def _send(provider, message: Message):
-    """Translate a Message into a provider call."""
-    if message.message_type == CampaignMessageType.TEXT:
-        return provider.send_text(
-            to=message.to_phone_number,
-            body=(message.rendered_payload or {}).get("text", ""),
-        )
-
-    values = (message.rendered_payload or {}).get("values", {})
-    template = message.template
-    ordered_tokens = list(template.variables or []) if template else list(values)
-
-    return provider.send_template(
-        to=message.to_phone_number,
-        template_name=message.template_name,
-        language=message.template_language,
-        body_variables=[str(values.get(token, "")) for token in ordered_tokens],
     )
 
 

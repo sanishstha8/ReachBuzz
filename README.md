@@ -50,6 +50,7 @@ Business Platform Cloud API**.
 29. [Per-organization messaging credentials](#29-per-organization-messaging-credentials)
 30. [The billing area](#30-the-billing-area)
 31. [The backoffice](#31-the-backoffice)
+32. [Channels and SMS](#32-channels-and-sms)
 
 ---
 
@@ -519,7 +520,7 @@ full suite before the next one starts.
 | 6 | Customer billing dashboard | ✅ Complete — [§30](#30-the-billing-area) |
 | 7 | Platform admin dashboard | ✅ Complete — [§31](#31-the-backoffice) |
 | 8 | Versioned API, notifications, hardening | Not started |
-| 9 | SMS channel | Not started |
+| 9 | SMS channel | ✅ Complete — [§32](#32-channels-and-sms) |
 
 Stage 5 is the one that changes how sending works: credentials are a single set in
 the environment today, and every organization currently shares them.
@@ -1756,3 +1757,92 @@ comes first.
 
 An installation with nothing wrong says "Nothing past due" rather than showing
 an empty list styled like a real one.
+
+---
+
+## 32. Channels and SMS
+
+Stage 9, taken before Stage 8 deliberately: hardening is best done once the shape
+is final, and a second messaging channel is the thing most likely to reveal that
+an abstraction needs changing. Finding that after hardening means hardening twice.
+
+It found two things.
+
+### The provider seam was WhatsApp-shaped
+
+`WhatsAppProvider` requires `send_template(name, language, header_variables)` and
+`fetch_templates()` — an interface built around Meta's approval registry. SMS has
+no such thing: no upstream catalogue to sync, no language variant to select,
+nothing to get approved. Making SMS implement that contract would have meant
+three methods raising `NotImplementedError` and a fourth pretending a template
+name was something a gateway understood.
+
+So SMS gets its own, deliberately smaller contract: **send some text to a number,
+and say what happened.** What the two providers share is not an interface but a
+*result shape* — `success`, `provider_message_id`, `error_code`, `retryable` —
+and sharing the shape is enough for one Celery task to drive either.
+
+`messaging/routing.py` is the only module that knows both exist. The retry logic,
+the claim protocol, the rate limiter and the status machine were not touched.
+
+### Consent had to become per channel
+
+This is the part that mattered, and the reason this was not a small stage.
+
+`Contact.opted_in` was one boolean because there was one channel. Adding SMS on
+top of it would have meant **every contact who agreed to WhatsApp order updates
+was silently opted in to SMS marketing** — and nothing would have looked wrong.
+That is precisely what "consent is never inferred" forbids, and in most
+jurisdictions the two channels are separately regulated.
+
+So `eligible()` takes a channel, and it is still the only place the rule is
+written:
+
+```python
+Contact.objects.eligible(Channel.SMS)   # only people who agreed to SMS
+```
+
+**No record means no consent.** The absence of a row is a "no", never a "not
+asked yet, so probably fine". A channel added tomorrow starts with nobody on it.
+
+WhatsApp still reads `opted_in`; every other channel reads
+`ContactChannelConsent`. That asymmetry is deliberate and documented: `opted_in`
+carries every opt-in and opt-out this system has ever recorded, each with a
+source and an audit entry, and **migrating consent state is the riskiest data
+migration this codebase could run** — getting it wrong means messaging somebody
+who said no. Consolidating them is a later job done on purpose, not a side effect
+of adding SMS.
+
+### What follows from the channel
+
+| Thing | Behaviour |
+|---|---|
+| `Campaign.channel` | Chosen at creation. The audience was resolved against this channel's consent, so changing it later would send to people who never agreed |
+| `Message.channel` | Taken from the campaign **on insert**, not defaulted — a caller passing a different one is the exact mistake being guarded against, so the campaign wins |
+| Template on SMS | Refused at validation, not discovered a thousand messages in |
+| Empty SMS audience | Says *"no recipient has recorded consent for SMS"* — naming the channel, because "nobody consented" is baffling to somebody looking at a group full of opted-in WhatsApp contacts |
+| Launch | `routing.preflight()` checks the channel's provider before any state changes |
+
+### Segments, because a gateway bills per segment
+
+160 characters — unless one character forces UCS-2, at which point it is 70. A
+customer who writes 155 characters and adds one emoji goes from **one segment to
+three** and finds out on an invoice. `segment_count()` gets this right, including
+the seven characters a concatenation header costs and the two positions an
+extended GSM-7 character (`{`, `€`) takes.
+
+### Only the mock exists
+
+Same position as the payment gateway, for the same reason: a real SMS provider
+needs an account, a registered sender id and, in several countries, regulatory
+paperwork. A half-written integration against one is worse than an honest
+absence. The mock simulates a carrier rejection, an unregistered sender id, a
+throttle and a transient error — the two permanent and two retryable — because a
+retry path that has never run is a retry path that does not work.
+
+### Not in this stage
+
+No per-organization SMS sender ids (there is one installation-wide `SMS_SENDER_ID`),
+no delivery-receipt webhook endpoint for SMS, no per-channel plan limits, and no
+UI for choosing a channel when creating a campaign — `Campaign.channel` is set in
+the admin or the API. Each is a small piece; none of them is the abstraction.

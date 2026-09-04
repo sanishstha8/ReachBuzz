@@ -24,6 +24,7 @@ from contacts.models import (
     OptOutSource,
 )
 from core.audit import record_audit
+from core.channels import DEFAULT_CHANNEL, label_for
 from core.exceptions import ConflictError, ValidationFailed
 from core.models import AuditAction
 from core.phone import PhoneNumberError, parse_phone_number
@@ -223,14 +224,32 @@ def set_consent(
     *,
     opted_in: bool,
     source: str = "",
+    channel: str = DEFAULT_CHANNEL,
     user=None,
     request: HttpRequest | None = None,
 ) -> Contact:
     """
-    Record an opt-in or opt-out, with its source, and audit it.
+    Record an opt-in or opt-out for one channel, with its source, and audit it.
 
-    This is the only supported way to change ``Contact.opted_in``.
+    The only supported way to change consent, on any channel. Writing
+    ``Contact.opted_in`` directly skips the source, the timestamp and the audit
+    entry, which are the three things that make a consent record worth having.
+
+    ``channel`` defaults to WhatsApp so every existing caller keeps its meaning
+    exactly. A non-default channel writes a
+    :class:`~contacts.consent.ContactChannelConsent` row instead of touching the
+    boolean — see that module for why those are still two places.
     """
+    if channel != DEFAULT_CHANNEL:
+        return _set_channel_consent(
+            contact,
+            channel=channel,
+            opted_in=opted_in,
+            source=source,
+            user=user,
+            request=request,
+        )
+
     if opted_in:
         contact.opt_in(source or OptInSource.MANUAL)
         action = AuditAction.CONTACT_OPTED_IN
@@ -258,6 +277,51 @@ def set_consent(
         obj=contact,
         description=description,
         metadata={"phone_number": contact.phone_number, "source": source or "manual"},
+    )
+    return contact
+
+
+@transaction.atomic
+def _set_channel_consent(
+    contact: Contact,
+    *,
+    channel: str,
+    opted_in: bool,
+    source: str = "",
+    user=None,
+    request: HttpRequest | None = None,
+) -> Contact:
+    """
+    The same act, recorded against a channel other than WhatsApp.
+
+    Audited with the same two actions rather than new ones: an opt-out is an
+    opt-out, and somebody reading a contact's consent history wants one list in
+    date order, not one list per channel. The channel is in the metadata.
+    """
+    from contacts.consent import ContactChannelConsent
+
+    record, _created = ContactChannelConsent.objects.get_or_create(
+        contact=contact, channel=channel
+    )
+
+    if opted_in:
+        record.grant(source or OptInSource.MANUAL)
+        action = AuditAction.CONTACT_OPTED_IN
+        description = f"{contact.name} opted in to {label_for(channel)}"
+    else:
+        record.withdraw(source or OptOutSource.MANUAL)
+        action = AuditAction.CONTACT_OPTED_OUT
+        description = f"{contact.name} opted out of {label_for(channel)}"
+
+    record.save()
+
+    record_audit(
+        action,
+        user=user,
+        request=request,
+        obj=contact,
+        description=description,
+        metadata={"channel": channel, "source": record.source, "opted_in": opted_in},
     )
     return contact
 

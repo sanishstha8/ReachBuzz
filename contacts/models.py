@@ -15,6 +15,7 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from core.channels import DEFAULT_CHANNEL, Channel
 from core.models import BaseModel
 from core.phone import validate_phone_number
 from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
@@ -51,14 +52,32 @@ class ContactQuerySet(OrganizationScopedQuerySet):
     def active(self) -> ContactQuerySet:
         return self.filter(status=ContactStatus.ACTIVE)
 
-    def eligible(self) -> ContactQuerySet:
+    def eligible(self, channel: str = DEFAULT_CHANNEL) -> ContactQuerySet:
         """
-        Contacts a campaign is permitted to message.
+        Contacts a campaign is permitted to message **over one channel**.
 
         This is the only place the rule is written. Campaign audience
         resolution calls it and offers no override.
+
+        The channel argument is the whole point. Consent to be messaged one way
+        is not consent to be messaged another, and defaulting a new channel to
+        whoever agreed to the old one would be inferring consent — which this
+        project does not do. A contact with no decision recorded for a channel
+        is not eligible on it.
+
+        WhatsApp still reads ``opted_in``, which has always meant exactly this
+        and carries every audited decision ever made. Every other channel reads
+        :class:`~contacts.consent.ContactChannelConsent`. See that module for
+        why the two are not yet one thing.
         """
-        return self.filter(opted_in=True, status=ContactStatus.ACTIVE)
+        active = self.filter(status=ContactStatus.ACTIVE)
+
+        if channel == Channel.WHATSAPP:
+            return active.filter(opted_in=True)
+
+        return active.filter(
+            channel_consents__channel=channel, channel_consents__opted_in=True
+        )
 
     def search(self, term: str) -> ContactQuerySet:
         term = (term or "").strip()

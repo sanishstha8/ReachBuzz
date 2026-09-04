@@ -1,0 +1,15 @@
+Hello {{ user.first_name|default:"there" }},
+
+Your organization has used {{ used }} of its {{ limit }} {{ metric_label }} for
+this billing period, which ends on {{ period_end|date:"j F Y" }}.
+
+{% if reached %}You have reached the limit. Sending is paused until the period resets or the
+plan is changed; everything else keeps working, and nothing has been lost.{% else %}Nothing is blocked yet. This is early warning rather than a problem.{% endif %}
+
+If you expect to need more, changing plan takes effect immediately and applies
+to what you have already used this period.
+
+-- {{ brand_name }}
+
+You are receiving this because you are an owner or administrator of
+{{ organization.name }}.

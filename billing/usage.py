@@ -211,9 +211,11 @@ def check(organization, metric: str, additional: int = 1) -> None:
 
     used = COUNTERS[metric](organization)
     if plan.allows(metric, used, additional):
+        _warn_if_nearly_spent(organization, plan, metric, used)
         return
 
     ceiling = plan.limit(metric)
+    _notify_limit_reached(organization, plan, metric, used, ceiling)
     raise QuotaExceeded(
         _MESSAGES[metric]["headline"].format(plan=plan.name),
         details={
@@ -226,6 +228,84 @@ def check(organization, metric: str, additional: int = 1) -> None:
             "used": used,
             "limit": ceiling,
         },
+    )
+
+
+#: How much of a limit has to be gone before it is worth mentioning.
+#:
+#: 80% and not, say, 50%: a warning that arrives while there is still half the
+#: month's allowance left is a warning people learn to ignore, and the one that
+#: matters then goes unread with it.
+WARNING_THRESHOLD = 0.8
+
+_METRIC_LABELS = {
+    "max_messages_per_month": "messages",
+    "max_contacts": "contacts",
+    "max_team_members": "team members",
+}
+
+
+def _warn_if_nearly_spent(organization, plan, metric: str, used: int) -> None:
+    """
+    Say something once, while there is still time to act on it.
+
+    Idempotent per organization, per metric, per billing period, so a customer
+    sending in bursts gets one warning a month rather than one per campaign.
+    """
+    ceiling = plan.limit(metric)
+    if ceiling is None or ceiling <= 0:
+        return
+    if (used / ceiling) < WARNING_THRESHOLD:
+        return
+
+    start, end = current_period(organization)
+    _send_quota_notice(
+        organization,
+        metric,
+        used,
+        ceiling,
+        end,
+        reached=False,
+        key=f"quota-warning:{organization.pk}:{metric}:{start:%Y-%m-%d}",
+    )
+
+
+def _notify_limit_reached(organization, plan, metric: str, used: int, ceiling) -> None:
+    start, end = current_period(organization)
+    _send_quota_notice(
+        organization,
+        metric,
+        used,
+        ceiling,
+        end,
+        reached=True,
+        key=f"quota-reached:{organization.pk}:{metric}:{start:%Y-%m-%d}",
+    )
+
+
+def _send_quota_notice(organization, metric, used, ceiling, period_end, *, reached, key) -> None:
+    from core.models import NotificationKind
+    from core.notifications import notify_organization
+
+    notify_organization(
+        organization=organization,
+        kind=NotificationKind.QUOTA_REACHED if reached else NotificationKind.QUOTA_WARNING,
+        subject=(
+            f"You have reached your {_METRIC_LABELS.get(metric, metric)} limit"
+            if reached
+            else f"You have used {round(used / ceiling * 100)}% of your "
+            f"{_METRIC_LABELS.get(metric, metric)}"
+        ),
+        template="notifications/quota_warning.txt",
+        context={
+            "organization": organization,
+            "metric_label": _METRIC_LABELS.get(metric, metric),
+            "used": used,
+            "limit": ceiling,
+            "period_end": period_end,
+            "reached": reached,
+        },
+        idempotency_key=key,
     )
 
 

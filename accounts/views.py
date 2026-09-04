@@ -89,12 +89,54 @@ class ProfileView(ActiveUserRequiredMixin, PageTitleMixin, FormView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.setdefault("password_form", PasswordChangeForm(user=self.request.user))
+        context["notification_kinds"] = self._notification_state()
         return context
+
+    def _notification_state(self):
+        """
+        Every kind, with this user's answer or the default for it.
+
+        Listed exhaustively rather than only the kinds somebody has an opinion
+        about: a preferences page that hides the settings you have never touched
+        is a preferences page you cannot use to find anything.
+        """
+        from core.models import NotificationKind, NotificationPreference
+
+        return [
+            {
+                "value": value,
+                "label": label,
+                "enabled": NotificationPreference.objects.wants(self.request.user, value),
+            }
+            for value, label in NotificationKind.choices
+        ]
 
     def post(self, request, *args, **kwargs):
         if "change_password" in request.POST:
             return self._handle_password_change(request)
+        if "save_notifications" in request.POST:
+            return self._handle_notifications(request)
         return super().post(request, *args, **kwargs)
+
+    def _handle_notifications(self, request):
+        """
+        Save every kind, not just the ticked ones.
+
+        An unticked checkbox sends nothing at all, so reading only what arrived
+        would make "off" unrepresentable — the setting would silently revert
+        to its default and the customer would keep getting mail they had just
+        turned off.
+        """
+        from core.models import NotificationKind, NotificationPreference
+
+        wanted = set(request.POST.getlist("notifications"))
+        for value, _label in NotificationKind.choices:
+            NotificationPreference.objects.update_or_create(
+                user=request.user, kind=value, defaults={"enabled": value in wanted}
+            )
+
+        messages.success(request, "Notification preferences saved.")
+        return redirect("accounts:profile")
 
     def form_valid(self, form):
         form.save()

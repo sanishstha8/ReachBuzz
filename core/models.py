@@ -118,3 +118,146 @@ class AuditLog(UUIDPrimaryKeyModel):
     def __str__(self) -> str:
         actor = self.user.get_username() if self.user else "system"
         return f"{self.get_action_display()} by {actor} at {self.created_at:%Y-%m-%d %H:%M}"
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+
+class NotificationKind(models.TextChoices):
+    """
+    The things worth telling somebody about.
+
+    Each is an event the system already knows and, until Stage 8, kept to
+    itself. Adding one means adding a default below, deliberately, rather than
+    inheriting "on" from a blanket setting.
+    """
+
+    CAMPAIGN_FINISHED = "campaign_finished", "A campaign finished sending"
+    CAMPAIGN_FAILED = "campaign_failed", "A campaign finished with heavy failures"
+    QUOTA_WARNING = "quota_warning", "A plan limit is nearly spent"
+    QUOTA_REACHED = "quota_reached", "A plan limit has been reached"
+    PAYMENT_FAILED = "payment_failed", "A payment did not go through"
+    INVOICE_ISSUED = "invoice_issued", "An invoice was issued"
+    SENDER_PROBLEM = "sender_problem", "A WhatsApp sender stopped working"
+
+
+NOTIFICATION_KINDS = frozenset(NotificationKind.values)
+
+#: Kinds only an owner or administrator hears about. A member who cannot change
+#: the card does not need to be told it was declined.
+ADMIN_ONLY_KINDS = frozenset(
+    {
+        NotificationKind.PAYMENT_FAILED,
+        NotificationKind.INVOICE_ISSUED,
+        NotificationKind.QUOTA_REACHED,
+        NotificationKind.QUOTA_WARNING,
+    }
+)
+
+#: Whether each kind is on for somebody who has never expressed a preference.
+#:
+#: Set per kind rather than all-on. The test is whether a customer would be
+#: annoyed to receive it unasked: being told a payment failed is a service,
+#: being told every campaign finished is a mailing list. So the ones that
+#: require action default on, and the ones that are merely informational
+#: default off.
+NOTIFICATION_DEFAULTS = {
+    NotificationKind.CAMPAIGN_FINISHED: False,
+    NotificationKind.CAMPAIGN_FAILED: True,
+    NotificationKind.QUOTA_WARNING: True,
+    NotificationKind.QUOTA_REACHED: True,
+    NotificationKind.PAYMENT_FAILED: True,
+    NotificationKind.INVOICE_ISSUED: False,
+    NotificationKind.SENDER_PROBLEM: True,
+}
+
+
+class NotificationPreferenceQuerySet(models.QuerySet):
+    def wants(self, user, kind: str) -> bool:
+        """
+        Whether this user should receive this kind.
+
+        An absent row means the default for that kind, not "yes". Nobody is
+        opted in to anything by having never been asked \u2014 the same rule the
+        contacts app applies to consent, applied to our own mail.
+        """
+        row = self.filter(user=user, kind=kind).first()
+        if row is not None:
+            return row.enabled
+        return NOTIFICATION_DEFAULTS.get(kind, False)
+
+
+class NotificationPreference(models.Model):
+    """One person's answer for one kind of notification."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notification_preferences"
+    )
+    kind = models.CharField(max_length=32, choices=NotificationKind.choices)
+    enabled = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = NotificationPreferenceQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "notification preference"
+        verbose_name_plural = "notification preferences"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "kind"], name="unique_notification_preference"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user}: {self.get_kind_display()} {'on' if self.enabled else 'off'}"
+
+
+class NotificationLog(models.Model):
+    """
+    What was sent, to whom, and why it will not be sent again.
+
+    ``idempotency_key`` is unique and is the whole reason this table exists. A
+    campaign that finishes while a worker is retrying, a webhook redelivered by
+    a payment provider, a periodic job that runs twice after an outage \u2014 each
+    would otherwise produce a duplicate email, and the person receiving them
+    cannot tell a retry from a real second event.
+
+    The row is written *before* the mail goes out. Sending and then recording
+    would send twice whenever the recording failed, which is the wrong way round
+    for something a person receives.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
+    )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    kind = models.CharField(max_length=32, choices=NotificationKind.choices, db_index=True)
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    subject = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    #: Null means the row was claimed but the mail never went. Worth being able
+    #: to find: it is the difference between "we told them" and "we meant to".
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "notification"
+        verbose_name_plural = "notifications"
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="notification_user_recent_idx"),
+        ]
+
+    def __str__(self) -> str:
+        state = "sent" if self.sent_at else "not sent"
+        return f"{self.get_kind_display()} to {self.user} ({state})"

@@ -67,6 +67,7 @@ THIRD_PARTY_APPS = [
 LOCAL_APPS = [
     "core.apps.CoreConfig",
     "organizations.apps.OrganizationsConfig",
+    "billing.apps.BillingConfig",
     "accounts.apps.AccountsConfig",
     "contacts.apps.ContactsConfig",
     "whatsapp.apps.WhatsappConfig",
@@ -310,6 +311,19 @@ META_WABA_ID = env("META_WABA_ID", default="")
 META_APP_ID = env("META_APP_ID", default="")
 META_APP_SECRET = env("META_APP_SECRET", default="")
 META_WEBHOOK_VERIFY_TOKEN = env("META_WEBHOOK_VERIFY_TOKEN", default="")
+
+# --- Payments --------------------------------------------------------------
+# Only "mock" is implemented. Adding a real gateway means merchant credentials
+# and a live account, and a half-written integration against one is worse than
+# an honest absence - the same position section 22 takes on the Meta API.
+PAYMENT_PROVIDER = env("PAYMENT_PROVIDER", default="mock")
+
+# The HMAC key a provider signs its webhooks with. Verified over the raw body.
+PAYMENT_WEBHOOK_SECRET = env("PAYMENT_WEBHOOK_SECRET", default="")
+
+# How often the mock provider pretends a charge failed, so the retry and
+# dunning paths can be exercised locally. 0.0 in production, always.
+MOCK_PAYMENT_FAILURE_RATE = env.float("MOCK_PAYMENT_FAILURE_RATE", default=0.0)
 
 # Outbound throughput ceiling we impose on ourselves so we stay comfortably
 # inside the messaging limits of the connected WhatsApp Business Account.

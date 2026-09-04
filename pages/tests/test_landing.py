@@ -67,27 +67,48 @@ class TestItSaysTrueThings:
         A tier with no figure says so. Filling the layout with a plausible
         number would be the page telling its first lie.
         """
-        from pages.views import PRICING_TIERS
+        from billing.models import Plan
 
-        assert not any(tier.has_price for tier in PRICING_TIERS)
+        assert not any(plan.has_price for plan in Plan.objects.public())
         assert "Pricing on request" in page
 
-    def test_a_configured_price_is_shown_instead(self, client: Client, monkeypatch) -> None:
-        from pages import views
+    def test_a_configured_price_is_shown_instead(self, client: Client) -> None:
+        """Setting a real figure on the plan is all it takes to publish one."""
+        from billing.models import Plan
 
-        priced = views.Tier(
-            name="Starter",
-            price="Rs 4,500",
-            period="per month",
-            summary="x",
-            features=("y",),
+        Plan.objects.public().update(price=None, is_public=False)
+        Plan.objects.create(
+            name="Priced", slug="priced", price="4500.00", currency="NPR", summary="x"
         )
-        monkeypatch.setattr(views, "PRICING_TIERS", (priced,))
 
         body = client.get(reverse("pages:landing")).content.decode()
 
-        assert "Rs 4,500" in body
+        assert "NPR 4,500.00" in body
         assert "Pricing on request" not in body
+
+    def test_the_advertised_limits_are_the_enforced_ones(self, page: str) -> None:
+        """
+        The point of moving tiers into the database. While the copy was a tuple
+        in pages/views.py, the page could promise a ceiling that nothing checked
+        — and did, for two releases.
+        """
+        from billing.models import Plan
+
+        starter = Plan.objects.get(slug="starter")
+
+        assert starter.max_contacts == 1000
+        assert "Up to 1,000 contacts" in page
+
+    def test_the_pricing_block_is_omitted_without_a_catalogue(self, client: Client) -> None:
+        """An install with no plans shows no pricing section rather than an empty one."""
+        from billing.models import Plan
+
+        Plan.objects.update(is_public=False)
+
+        body = client.get(reverse("pages:landing")).content.decode()
+
+        assert "Pricing on request" not in body
+        assert 'id="pricing"' not in body
 
     def test_the_meta_billing_caveat_is_stated(self, page: str) -> None:
         """Meta bills conversations separately; a pricing page must not imply otherwise."""

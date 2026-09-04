@@ -14,6 +14,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 
+from billing import usage as quotas
 from contacts.models import (
     Contact,
     ContactGroup,
@@ -85,6 +86,10 @@ def create_contact(
     passes ``opted_in=True`` explicitly, and the source is recorded with it.
     """
     e164, dialling_code = normalize_contact_phone(phone_number, default_region)
+
+    # Checked before the duplicate lookup so a customer at their ceiling is told
+    # about the ceiling rather than about whichever error happens to fire first.
+    quotas.check(organization, "max_contacts")
 
     existing = find_duplicate(e164)
     if existing is not None:

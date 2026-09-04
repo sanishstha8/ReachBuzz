@@ -43,6 +43,21 @@ app.conf.beat_schedule = {
         "schedule": crontab(minute="*/5"),
         "options": {"queue": "whatsapp_webhook", "expires": 240},
     },
+    # A monthly message quota is measured from current_period_start, so nothing
+    # resets until the period does. Hourly rather than daily: a customer whose
+    # period ends at 09:00 should not wait until midnight to send again.
+    "roll-billing-periods": {
+        "task": "billing.tasks.roll_billing_periods",
+        "schedule": crontab(minute=5),
+        "options": {"queue": "default", "expires": 3300},
+    },
+    # Daily, not hourly. Retrying a declined card every hour annoys the customer
+    # and, on some networks, counts against the merchant.
+    "collect-due-invoices": {
+        "task": "billing.tasks.collect_due_invoices",
+        "schedule": crontab(hour=9, minute=30),
+        "options": {"queue": "default", "expires": 3600},
+    },
 }
 
 app.autodiscover_tasks()

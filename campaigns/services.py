@@ -19,6 +19,7 @@ from django.db.models import Count, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
+from billing import usage as quotas
 from campaigns import dispatch, variables
 from campaigns.models import (
     ALLOWED_TRANSITIONS,
@@ -445,6 +446,13 @@ def launch_campaign(
     dispatch.preflight()
 
     recipients = list(resolve_audience(campaign).order_by("name"))
+
+    # The plan check needs the audience size, so it comes after resolution and
+    # before anything is written. Refusing the whole campaign is the point: a
+    # send stopped halfway leaves the customer billed for a delivery they
+    # cannot identify and an audience split for no reason they can see.
+    quotas.check_can_send(campaign.organization, len(recipients))
+
     created = materialize_messages(campaign, recipients)
 
     campaign.total_recipients = created

@@ -48,6 +48,12 @@
 
   <li class="app-nav__section">Account</li>
   <li>
+    <a class="app-nav__link {% if active_nav == 'billing' %}is-active{% endif %}"
+       href="{% url 'billing:overview' %}" {% if active_nav == 'billing' %}aria-current="page"{% endif %}>
+      <i class="bi bi-credit-card" aria-hidden="true"></i><span>Billing</span>
+    </a>
+  </li>
+  <li>
     <a class="app-nav__link {% if active_nav == 'profile' %}is-active{% endif %}"
        href="{% url 'accounts:profile' %}" {% if active_nav == 'profile' %}aria-current="page"{% endif %}>
       <i class="bi bi-person-gear" aria-hidden="true"></i><span>My profile</span>

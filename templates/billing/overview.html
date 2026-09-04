@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">What your organization is on, and what it has used.</p>
+{% endblock %}
+
+{% block content %}
+
+{% if subscription and subscription.cancel_at_period_end %}
+  <div class="alert alert-warning d-flex flex-wrap gap-3 align-items-center justify-content-between" role="status">
+    <div>
+      <strong>Your subscription ends on {{ subscription.current_period_end|date:"j F Y" }}.</strong>
+      Everything keeps working until then.
+    </div>
+    {% if can_manage_billing %}
+      <form method="post" action="{% url 'billing:resume' %}" class="mb-0">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-dark">Keep my subscription</button>
+      </form>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% if outstanding %}
+  <div class="alert alert-danger" role="status">
+    <strong>{{ outstanding|length }} unpaid invoice{{ outstanding|length|pluralize }}.</strong>
+    <a href="{% url 'billing:invoices' %}" class="alert-link">Review them</a>.
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  {# ------------------------------------------------------------- plan #}
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Current plan</h2>
+
+        {% if plan %}
+          <div class="d-flex align-items-baseline gap-2 mb-1">
+            <span class="h4 mb-0">{{ plan.name }}</span>
+            {% if subscription %}
+              <span class="badge {% if subscription.status == 'active' %}text-bg-success
+                                 {% elif subscription.status == 'trialing' %}text-bg-info
+                                 {% elif subscription.status == 'past_due' %}text-bg-warning
+                                 {% else %}text-bg-secondary{% endif %}">
+                {{ subscription.get_status_display }}
+              </span>
+            {% endif %}
+          </div>
+
+          <p class="text-body-secondary mb-3">
+            {% if plan.has_price %}
+              {{ plan.price_display }} <span class="small">{{ plan.period }}</span>
+            {% else %}
+              {# No figure is set. Saying so beats inventing one. #}
+              Pricing on request
+            {% endif %}
+          </p>
+
+          {% if plan.summary %}<p class="small mb-3">{{ plan.summary }}</p>{% endif %}
+
+          {% if subscription %}
+            <dl class="row small mb-3">
+              <dt class="col-6 fw-normal text-body-secondary">Period ends</dt>
+              <dd class="col-6 text-end mb-1">{{ subscription.current_period_end|date:"j M Y" }}</dd>
+              {% if subscription.is_trialing and subscription.trial_end %}
+                <dt class="col-6 fw-normal text-body-secondary">Trial ends</dt>
+                <dd class="col-6 text-end mb-1">{{ subscription.trial_end|date:"j M Y" }}</dd>
+              {% endif %}
+            </dl>
+          {% else %}
+            <p class="small text-body-secondary">
+              This organization has no subscription on record, so the limits shown
+              are the default plan's. Choosing a plan below fixes that.
+            </p>
+          {% endif %}
+        {% else %}
+          <p class="text-body-secondary mb-0">No plans have been set up on this installation.</p>
+        {% endif %}
+
+        {% if can_manage_billing %}
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="{% url 'billing:plans' %}" class="btn btn-sm btn-primary">Change plan</a>
+            {% if subscription and not subscription.cancel_at_period_end %}
+              <form method="post" action="{% url 'billing:cancel' %}" class="mb-0"
+                    onsubmit="return confirm('Cancel at the end of this period? You keep access until {{ subscription.current_period_end|date:"j F Y" }}.');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Cancel subscription</button>
+              </form>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="small text-body-tertiary mb-0">
+            Only an owner or administrator can change the subscription.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ usage #}
+  <div class="col-12 col-lg-7">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-baseline mb-3">
+          <h2 class="h6 text-body-secondary text-uppercase small mb-0">This period</h2>
+          <span class="small text-body-tertiary">
+            {{ summary.period_start|date:"j M" }} – {{ summary.period_end|date:"j M Y" }}
+          </span>
+        </div>
+
+        {% for label, metric in metrics %}
+          {% include "billing/_usage_meter.html" with label=label metric=metric %}
+        {% endfor %}
+
+        <p class="small text-body-tertiary mb-0">
+          Messages are counted when they are actually sent, not when they are queued.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ------------------------------------------------------------ invoices #}
+<div class="card mt-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-baseline mb-3">
+      <h2 class="h6 text-body-secondary text-uppercase small mb-0">Recent invoices</h2>
+      <a href="{% url 'billing:invoices' %}" class="small">All invoices</a>
+    </div>
+
+    {% if recent_invoices %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Number</th>
+              <th scope="col">Period</th>
+              <th scope="col" class="text-end">Total</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for invoice in recent_invoices %}
+              <tr>
+                <td><a href="{% url 'billing:invoice-detail' invoice.pk %}">{{ invoice.number }}</a></td>
+                <td class="small text-body-secondary">{{ invoice.period_start|date:"j M Y" }}</td>
+                <td class="text-end">{{ invoice.currency }} {{ invoice.total|floatformat:2|intcomma }}</td>
+                <td>
+                  <span class="badge {% if invoice.status == 'paid' %}text-bg-success
+                                     {% elif invoice.status == 'open' %}text-bg-warning
+                                     {% else %}text-bg-secondary{% endif %}">
+                    {{ invoice.get_status_display }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-body-secondary mb-0">
+        No invoices yet.
+        {% if plan and not plan.has_price %}
+          This plan is quoted individually, so nothing is billed automatically.
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

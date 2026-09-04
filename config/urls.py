@@ -29,6 +29,7 @@ urlpatterns = [
     path("contacts/", include("contacts.urls", namespace="contacts")),
     path("campaigns/", include("campaigns.urls", namespace="campaigns")),
     path("templates/", include("whatsapp.urls", namespace="whatsapp")),
+    path("billing/", include("billing.urls", namespace="billing")),
     # --- Inbound webhooks --------------------------------------------------
     # Unauthenticated and CSRF-exempt by necessity: Meta calls it. The HMAC
     # signature over the raw body is what authenticates the request.

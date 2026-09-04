@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Every invoice raised for your organization.</p>
+{% endblock %}
+
+{% block content %}
+
+<p class="mb-4">
+  <a href="{% url 'billing:overview' %}" class="small"><i class="bi bi-arrow-left" aria-hidden="true"></i> Back to billing</a>
+</p>
+
+{% if invoices %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">Number</th>
+            <th scope="col">Plan</th>
+            <th scope="col">Period</th>
+            <th scope="col">Due</th>
+            <th scope="col" class="text-end">Total</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for invoice in invoices %}
+            <tr>
+              <td><a href="{% url 'billing:invoice-detail' invoice.pk %}">{{ invoice.number }}</a></td>
+              <td class="small">{{ invoice.plan.name }}</td>
+              <td class="small text-body-secondary">
+                {{ invoice.period_start|date:"j M Y" }} – {{ invoice.period_end|date:"j M Y" }}
+              </td>
+              <td class="small {% if invoice.is_overdue %}text-danger fw-medium{% endif %}">
+                {{ invoice.due_at|date:"j M Y"|default:"—" }}
+              </td>
+              <td class="text-end">{{ invoice.currency }} {{ invoice.total|floatformat:2|intcomma }}</td>
+              <td>
+                <span class="badge {% if invoice.status == 'paid' %}text-bg-success
+                                   {% elif invoice.status == 'open' %}text-bg-warning
+                                   {% else %}text-bg-secondary{% endif %}">
+                  {{ invoice.get_status_display }}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% include "partials/pagination.html" %}
+{% else %}
+  <div class="card">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-receipt fs-1 text-body-tertiary" aria-hidden="true"></i>
+      <p class="mt-3 mb-1">No invoices yet.</p>
+      {% if no_priced_plan %}
+        {# Said plainly, because "no invoices" and "billing is broken" look the same. #}
+        <p class="small text-body-secondary mb-0">
+          Your plan is quoted individually rather than charged automatically, so
+          nothing is raised here. Talk to us about pricing when you are ready.
+        </p>
+      {% else %}
+        <p class="small text-body-secondary mb-0">
+          Your first invoice is raised when the current billing period closes.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

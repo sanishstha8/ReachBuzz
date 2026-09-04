@@ -48,6 +48,7 @@ Business Platform Cloud API**.
 27. [Plans, subscriptions and usage](#27-plans-subscriptions-and-usage)
 28. [Invoices and payments](#28-invoices-and-payments)
 29. [Per-organization messaging credentials](#29-per-organization-messaging-credentials)
+30. [The billing area](#30-the-billing-area)
 
 ---
 
@@ -514,7 +515,7 @@ full suite before the next one starts.
 | 3 | Plans, subscriptions, usage metering | ✅ Complete — [§27](#27-plans-subscriptions-and-usage) |
 | 4 | Payments and invoices | ✅ Complete — [§28](#28-invoices-and-payments) |
 | 5 | Per-organization messaging credentials | ✅ Complete — [§29](#29-per-organization-messaging-credentials) |
-| 6 | Customer billing dashboard | Not started |
+| 6 | Customer billing dashboard | ✅ Complete — [§30](#30-the-billing-area) |
 | 7 | Platform admin dashboard | Not started |
 | 8 | Versioned API, notifications, hardening | Not started |
 | 9 | SMS channel | Not started |
@@ -1581,3 +1582,87 @@ is always red is one everybody learns to scroll past.
 No self-service connection flow (Meta Embedded Signup), no per-number routing of
 outbound campaigns, no automatic token refresh. Accounts are entered in the admin
 and verified with `verify_live`.
+
+---
+
+## 30. The billing area
+
+Stage 6. Stages 3 to 5 built plans, usage, invoices and payments and gave the
+customer no way to see any of it. `/billing/` is where the person paying finds
+out what they are paying for.
+
+Four pages: an overview, the plan catalogue, an invoice list, and one invoice.
+
+### Reading is not changing
+
+Any member can see the bill. Only an owner or an administrator can change the
+plan or cancel. Hiding what the product costs from the people using it helps
+nobody; changing it is the part that needs a role — and that split already
+existed on `OrganizationMember.can_administer`, so this reuses it rather than
+inventing a second notion of who is in charge.
+
+A member who tries anyway is refused and told why, not silently redirected.
+
+### Every mutation is a POST
+
+Changing a plan, cancelling and resuming are all POST with CSRF. A plan-change
+link would be followed by every prefetcher and link scanner that saw it. A GET
+to the change-plan route returns **405**, not a redirect, so the mistake would be
+loud if anyone ever added one.
+
+`is_active=False` plans cannot be chosen by guessing a slug.
+
+### A downgrade that would not fit is refused, with the numbers
+
+> The Tiny plan allows 1 contacts and you have 3. Reduce them first, or choose a
+> larger plan.
+
+Checked against **live counts**, not against the old plan's limits — the question
+is not "is this smaller?" but "does what they have fit?". Moving from unlimited
+to 10,000 contacts is fine for somebody holding 500. Accepting a bad downgrade
+would leave a customer instantly over a ceiling they did not know they were
+choosing, unable to add a contact and unsure why.
+
+### Cancelling runs to the end of the period
+
+Cutting somebody off the moment they click takes away time they have already
+bought. The overview then offers **"Keep my subscription"** until the period ends,
+because a cancellation a month away is one people change their minds about.
+
+### Nothing is invented
+
+The rule the landing page has followed since Phase 8, applied to a page about
+money:
+
+| Situation | What the page says |
+|---|---|
+| Plan has no price | "Pricing on request" — never a fabricated figure |
+| Metric has no ceiling | "0 of unlimited", and **no progress bar** — a bar against no ceiling is meaningless, and 0% would imply one exists |
+| No invoices, unpriced plan | "quoted individually rather than charged automatically" |
+| No invoices, priced plan | "raised when the current billing period closes" |
+| Over a limit | "Over the limit by 2. You can still read everything; adding more is what is blocked." |
+| No subscription row | Says so, and still renders |
+
+An empty table styled like a real one reads as a bug. So does a 500 when a row
+is missing — the overview renders for an organization with no subscription and
+explains the state.
+
+The overage is computed in Python, not the template: Django's `add` filter cannot
+subtract, and the arithmetic that looks like it does is addition in disguise.
+
+### Invoices are scoped, and 404 for anyone else
+
+An invoice carries a business name, an amount and a period — the most sensitive
+document this application renders. `Invoice.objects.for_organization(...)` backs
+both the list and the detail view, so another tenant's invoice is a **404, not a
+403**: telling somebody a document exists but is not theirs confirms it exists.
+
+Failed payment attempts are shown, not hidden. "We tried twice" is a fact a
+customer may need explained, and hiding it makes a support conversation harder
+than it needs to be.
+
+### Not in this stage
+
+No PDF download, no payment-method entry (there is no gateway to enter one
+into), no self-service upgrade *checkout* — `change_plan` records the
+entitlement, and Stage 4's `collect()` bills it at the next period close.

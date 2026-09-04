@@ -1,0 +1,35 @@
+{% load humanize %}
+{% comment %}
+One usage row: what has been used, out of what.
+
+An unlimited metric gets no bar. A progress bar against no ceiling is
+meaningless, and rendering it at 0% would imply a ceiling exists.
+{% endcomment %}
+<div class="d-flex justify-content-between align-items-baseline mb-1">
+  <span class="fw-medium">{{ label }}</span>
+  <span class="text-body-secondary small">
+    {% if metric.limit is None %}
+      {{ metric.used|intcomma }} <span class="text-body-tertiary">of unlimited</span>
+    {% else %}
+      {{ metric.used|intcomma }} of {{ metric.limit|intcomma }}
+    {% endif %}
+  </span>
+</div>
+
+{% if metric.limit is not None %}
+  <div class="progress mb-3" role="progressbar"
+       aria-label="{{ label }}"
+       aria-valuenow="{{ metric.percent }}" aria-valuemin="0" aria-valuemax="100"
+       style="height:.5rem">
+    <div class="progress-bar {% if metric.exceeded %}bg-danger{% elif metric.percent >= 80 %}bg-warning{% endif %}"
+         style="width: {{ metric.percent }}%"></div>
+  </div>
+  {% if metric.exceeded %}
+    <p class="small text-danger mb-3">
+      Over the limit by {{ metric.over_by|intcomma }}. You can still read
+      everything; adding more is what is blocked.
+    </p>
+  {% endif %}
+{% else %}
+  <div class="mb-3"></div>
+{% endif %}

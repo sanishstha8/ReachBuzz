@@ -251,8 +251,13 @@ SPECTACULAR_SETTINGS = {
         "Messages are sent only to recipients whose consent is recorded, through "
         "the official Meta WhatsApp Business Platform Cloud API."
     ),
-    "VERSION": "0.1.0",
+    "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # The API is also served unversioned for the integrations that predate
+    # versioning. Both work; only v1 is documented, because two identical
+    # entries per endpoint helps nobody choose.
+    "SCHEMA_PATH_PREFIX": "/api/v1",
+    "PREPROCESSING_HOOKS": ["core.schema.only_versioned_endpoints"],
     "COMPONENT_SPLIT_REQUEST": True,
     # Several models have a "status" field with different choice sets. Naming
     # each one explicitly keeps the generated schema readable instead of

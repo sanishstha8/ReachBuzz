@@ -22,12 +22,15 @@ ignore = [
 # return so the retry path can be exercised locally; nothing it generates is a
 # token, a key, or anything anyone relies on being unguessable.
 "billing/providers/mock_provider.py" = ["S311"]
+# Same for the simulated SMS gateway: the randomness picks which fake failure
+# to return so the retry path can be exercised locally.
+"sms/providers/mock_provider.py" = ["S311"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["accounts", "billing", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "whatsapp"]
+known-first-party = ["accounts", "backoffice", "billing", "campaigns", "config", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "sms", "whatsapp"]
 
 [tool.coverage.run]
-source = ["accounts", "billing", "campaigns", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "whatsapp"]
+source = ["accounts", "backoffice", "billing", "campaigns", "contacts", "core", "dashboard", "messaging", "organizations", "pages", "sms", "whatsapp"]
 omit = ["*/migrations/*", "*/tests/*", "manage.py", "config/wsgi.py", "config/asgi.py"]
 
 [tool.coverage.report]

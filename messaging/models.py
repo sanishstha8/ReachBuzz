@@ -17,6 +17,7 @@ from django.utils.translation import gettext_lazy as _
 
 from campaigns.models import Campaign, CampaignMessageType
 from contacts.models import Contact
+from core.channels import DEFAULT_CHANNEL, Channel
 from core.models import BaseModel, TimeStampedModel
 from organizations.scoping import OrganizationOwnedModel, OrganizationScopedQuerySet
 from whatsapp.models import MessageTemplate
@@ -78,6 +79,14 @@ class Message(OrganizationOwnedModel, BaseModel):
     # Snapshot: the number as it was when the campaign launched, so history
     # stays accurate even if the contact's number is later corrected.
     to_phone_number = models.CharField(max_length=20)
+
+    # Copied from the campaign rather than joined at read time: a message is
+    # billed, retried and reported on by channel, and those paths must not each
+    # take a join to find out which one they are on. Set in ``save`` on insert
+    # and by ``materialize_messages`` for the bulk path — never by a caller.
+    channel = models.CharField(
+        max_length=16, choices=Channel.choices, default=DEFAULT_CHANNEL, db_index=True
+    )
 
     message_type = models.CharField(
         max_length=16,
@@ -148,16 +157,26 @@ class Message(OrganizationOwnedModel, BaseModel):
 
     def save(self, *args, **kwargs):
         """
-        Inherit the campaign's organization.
+        Inherit the campaign's organization and channel.
 
         A message cannot belong to a different tenant than the campaign that
         produced it, so deriving it here removes the possibility of a creation
         site forgetting — which would leave the row invisible to the customer
-        who sent it. ``materialize_messages`` still sets it explicitly, because
-        ``bulk_create`` does not call this.
+        who sent it. ``materialize_messages`` still sets both explicitly,
+        because ``bulk_create`` does not call this.
+
+        The channel is derived the same way and for a sharper reason: a message
+        on a different channel from its campaign would have been sent to
+        somebody who consented to the campaign's channel and not to this one.
         """
-        if self.organization_id is None and self.campaign_id:
-            self.organization_id = self.campaign.organization_id
+        if self.campaign_id:
+            if self.organization_id is None:
+                self.organization_id = self.campaign.organization_id
+            if self._state.adding:
+                # Taken from the campaign on insert, not merely defaulted to it.
+                # A caller passing a different channel is the exact mistake this
+                # guards against, so the campaign wins rather than the argument.
+                self.channel = self.campaign.channel
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:

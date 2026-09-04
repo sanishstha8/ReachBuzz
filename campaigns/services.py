@@ -30,8 +30,10 @@ from campaigns.models import (
 )
 from contacts.models import Contact, ContactGroup, ContactStatus
 from core.audit import record_audit
+from core.channels import Channel, label_for
 from core.exceptions import InvalidStateTransition, ValidationFailed
 from core.models import AuditAction
+from messaging import routing
 from whatsapp.services.templates import render_template
 
 logger = logging.getLogger(__name__)
@@ -76,8 +78,13 @@ def resolve_audience(campaign: Campaign) -> QuerySet[Contact]:
 
     Consent is applied here and nowhere else, and there is deliberately no
     parameter to skip it.
+
+    **The campaign's channel is passed through.** Eligibility is per channel:
+    somebody who agreed to WhatsApp has not agreed to SMS, and resolving an SMS
+    campaign's audience against WhatsApp consent would be inferring the one from
+    the other. That is the failure this whole stage exists to avoid.
     """
-    return audience_queryset(campaign).eligible().distinct()
+    return audience_queryset(campaign).eligible(campaign.channel).distinct()
 
 
 def audience_breakdown(campaign: Campaign) -> AudienceBreakdown:
@@ -192,7 +199,15 @@ def validation_blockers(campaign: Campaign) -> list[str]:
     if not campaign.target_all_eligible and not campaign.audience_entries.exists():
         blockers.append("Select at least one group, or target all eligible contacts.")
 
-    if campaign.message_type == CampaignMessageType.TEMPLATE:
+    if campaign.channel == Channel.SMS and campaign.message_type == CampaignMessageType.TEMPLATE:
+        # Not a provider failure to discover a thousand messages in. SMS has no
+        # approved-template registry to select from, so this campaign is simply
+        # not sendable as configured.
+        blockers.append(
+            "SMS has no approved templates. Change the message type to text, "
+            "or send this campaign over WhatsApp."
+        )
+    elif campaign.message_type == CampaignMessageType.TEMPLATE:
         if campaign.template is None:
             blockers.append("Select a message template.")
         else:
@@ -211,8 +226,12 @@ def validation_blockers(campaign: Campaign) -> list[str]:
 
     eligible = resolve_audience(campaign).count()
     if eligible == 0:
+        # Names the channel, because "nobody has consented" is confusing to
+        # somebody looking at a group full of opted-in WhatsApp contacts while
+        # trying to send an SMS. The distinction is the point, so it is said.
         blockers.append(
-            "No recipient in this audience has recorded consent, so there is nobody to message."
+            f"No recipient in this audience has recorded consent for "
+            f"{label_for(campaign.channel)}, so there is nobody to message."
         )
 
     maximum = getattr(settings, "CAMPAIGN_MAX_RECIPIENTS", 5000)
@@ -384,6 +403,11 @@ def materialize_messages(campaign: Campaign, contacts: Iterable[Contact]) -> int
                 # Derived, never passed: a message cannot belong to a different
                 # organization than the campaign that created it.
                 organization_id=campaign.organization_id,
+                # Same reasoning, one step sharper: a message on a different
+                # channel from its campaign would go to somebody who consented
+                # to that campaign's channel and not to this one. bulk_create
+                # does not call save(), so it is set here too.
+                channel=campaign.channel,
                 contact=contact,
                 to_phone_number=contact.phone_number,
                 message_type=campaign.message_type,
@@ -444,6 +468,11 @@ def launch_campaign(
     # Raises SendingUnavailable before any state change — this checks the
     # queue is actually reachable, not merely that a sender is registered.
     dispatch.preflight()
+
+    # And that the channel itself has a usable provider. Checked here, before
+    # anything is written, so a missing gateway is a refused draft rather than a
+    # thousand messages queued against nothing.
+    routing.preflight(campaign.organization, campaign.channel)
 
     recipients = list(resolve_audience(campaign).order_by("name"))
 

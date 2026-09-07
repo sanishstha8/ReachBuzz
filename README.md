@@ -52,6 +52,7 @@ Business Platform Cloud API**.
 31. [The backoffice](#31-the-backoffice)
 32. [Channels and SMS](#32-channels-and-sms)
 33. [Versioning, notifications and hardening](#33-versioning-notifications-and-hardening)
+34. [Before you go live](#34-before-you-go-live)
 
 ---
 
@@ -1922,3 +1923,78 @@ while silently protecting nothing.
 
 Anything genuinely not a secret goes in an exemption list **with a reason**,
 because "it's fine" is a claim that has to survive somebody reading it later.
+
+---
+
+## 34. Before you go live
+
+Every stage is built and every test passes. **Neither of those facts means this
+is ready to take real customers**, and the gap between them is entirely made of
+things no amount of further code closes. They are collected here because they
+were previously scattered across five sections, which is a poor way to hold a
+launch checklist.
+
+### The one that matters most
+
+☐ **Nothing here has ever run against a live WhatsApp Business Account.**
+
+Every Meta-facing assumption in this codebase — payload shapes, error codes,
+which failures are retryable, what a delivery receipt looks like — is inference
+from documentation. It is careful inference, and it is still inference. This has
+been true since Phase 7 and is the single largest untested surface in the
+project.
+
+The checklist at the end of [§22](#22-meta-cloud-api-integration) and the
+`verify_live` command exist for the day you have credentials. Run them before
+anything else on this page.
+
+### Configuration that is wrong by default for a platform
+
+☐ **`WHATSAPP_REQUIRE_MESSAGING_ACCOUNT=True`**
+
+It defaults to `False`, which is correct for one business running its own copy
+and keeps every pre-Stage-5 installation working. On a platform it means a
+customer who has not connected their own WABA sends on **your** number, against
+**your** messaging limit, on **your** sender reputation.
+
+☐ **`FIELD_ENCRYPTION_KEY`** — generate one with
+`python manage.py generate_encryption_key`. Without it the key is derived from
+`SECRET_KEY`, and rotating `SECRET_KEY` then makes every stored provider
+credential permanently unreadable. `check --deploy` warns about this (`core.W001`).
+
+☐ **`MOCK_PAYMENT_FAILURE_RATE=0.0`** and **`MOCK_SMS_FAILURE_RATE=0.0`**.
+
+### Decisions nobody has made yet
+
+☐ **Set plan prices.** All three plans have `price = NULL`, so
+`generate_invoice()` returns `None` and **no invoice is ever raised**. That is
+deliberate — a 0.00 invoice would tell a customer they owe nothing, which is not
+a claim this system can make while the page says "Pricing on request" — but it
+means billing is inert until somebody types a number into the admin.
+
+☐ **Set monthly message and team limits**, or leave them unlimited on purpose.
+Contact limits are enforced because they were already advertised; the other two
+were never published, so no figure was invented for them.
+
+☐ **Decide whether the unversioned `/api/` alias stays.** It has no removal date
+and none was invented. If it is ever retired, that is a decision with notice
+behind it.
+
+### Integrations that need an account, not a commit
+
+☐ **A payment gateway.** Only `MockPaymentProvider` is registered. No money can
+move. The seam is `billing/providers/`; adding one is an implementation of
+`PaymentProvider` and a line in `PROVIDERS`.
+
+☐ **An SMS gateway.** Only `MockSmsProvider`. Needs an account, a registered
+sender ID, and in several countries regulatory paperwork.
+
+### Things deliberately not built
+
+Team invitations · Meta Embedded Signup · PDF invoices · tax calculation ·
+refund initiation from our side · per-organization SMS sender IDs · per-channel
+plan limits · a channel picker in the campaign wizard.
+
+Each is a small, well-understood piece. None of them is an abstraction that
+would need to change first — which is the useful thing to know about a list of
+missing features.

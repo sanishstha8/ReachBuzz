@@ -103,4 +103,6 @@ class TestApiSchema:
     ) -> None:
         response = auth_api_client.get(reverse("api-schema"))
         assert response.status_code == 200
-        assert b"/api/auth/login/" in response.content
+        # Derived rather than written out, so versioning the API cannot leave
+        # this test asserting an address the schema no longer publishes.
+        assert reverse("accounts-api:login").encode() in response.content

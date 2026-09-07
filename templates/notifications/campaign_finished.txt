@@ -1,0 +1,19 @@
+Hello {{ user.first_name|default:"there" }},
+
+{% if heavy %}Your campaign "{{ campaign.name }}" has finished, but {{ failed }} of {{ total }} message{{ total|pluralize }} could not be delivered.
+
+That is a higher failure rate than usual, so it is worth a look. The most common
+causes are numbers that are not reachable on this channel and contacts whose
+consent has since been withdrawn.{% else %}Your campaign "{{ campaign.name }}" has finished sending.
+
+  Delivered   {{ delivered }}
+  Failed      {{ failed }}
+  Total       {{ total }}{% endif %}
+
+You can see the full breakdown, including the reason for each failure, on the
+campaign's page.
+
+-- {{ brand_name }}
+
+You are receiving this because campaign notifications are switched on for your
+account. You can turn them off on your profile page.

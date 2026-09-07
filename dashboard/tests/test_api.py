@@ -234,15 +234,19 @@ class TestSchema:
         """They are part of the published API, not an internal back channel."""
         schema = auth_api_client.get(reverse("api-schema")).content.decode()
 
-        for path in (
-            "/api/reports/overview/",
-            "/api/reports/activity/",
-            "/api/reports/campaigns/",
-            "/api/reports/failures/",
-            "/api/reports/consent/",
-            "/api/monitor/active-campaigns/",
+        # Reversed rather than written out: these moved under /api/v1/ when the
+        # API was versioned, and a hardcoded list would have had to move with
+        # them. It is also the stronger assertion — it checks the schema
+        # documents the address the application actually publishes.
+        for name in (
+            "dashboard-api:report-overview",
+            "dashboard-api:report-activity",
+            "dashboard-api:report-campaigns",
+            "dashboard-api:report-failures",
+            "dashboard-api:report-consent",
+            "dashboard-api:active-campaigns",
         ):
-            assert path in schema, path
+            assert reverse(name) in schema, name
 
 
 class TestNoCredentialLeaks:

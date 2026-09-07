@@ -51,6 +51,7 @@ Business Platform Cloud API**.
 30. [The billing area](#30-the-billing-area)
 31. [The backoffice](#31-the-backoffice)
 32. [Channels and SMS](#32-channels-and-sms)
+33. [Versioning, notifications and hardening](#33-versioning-notifications-and-hardening)
 
 ---
 
@@ -519,11 +520,12 @@ full suite before the next one starts.
 | 5 | Per-organization messaging credentials | ✅ Complete — [§29](#29-per-organization-messaging-credentials) |
 | 6 | Customer billing dashboard | ✅ Complete — [§30](#30-the-billing-area) |
 | 7 | Platform admin dashboard | ✅ Complete — [§31](#31-the-backoffice) |
-| 8 | Versioned API, notifications, hardening | Not started |
+| 8 | Versioned API, notifications, hardening | ✅ Complete — [§33](#33-versioning-notifications-and-hardening) |
 | 9 | SMS channel | ✅ Complete — [§32](#32-channels-and-sms) |
 
-Stage 5 is the one that changes how sending works: credentials are a single set in
-the environment today, and every organization currently shares them.
+All nine stages are complete. What that does *not* mean is covered in section 22:
+nothing here has run against a live WhatsApp Business Account, and no real payment
+gateway or SMS gateway is integrated. Those need accounts and credentials, not code.
 
 ---
 
@@ -1846,3 +1848,77 @@ No per-organization SMS sender ids (there is one installation-wide `SMS_SENDER_I
 no delivery-receipt webhook endpoint for SMS, no per-channel plan limits, and no
 UI for choosing a channel when creating a campaign — `Campaign.channel` is set in
 the admin or the API. Each is a small piece; none of them is the abstraction.
+
+---
+
+## 33. Versioning, notifications and hardening
+
+Stage 8, the last of the SaaS upgrade. Three independent pieces, done in that
+order because notifications add endpoints and it is better to add them
+already-versioned than to move them twice.
+
+### The API is at `/api/v1/`, and also where it always was
+
+The canonical routes carry the original namespaces, so `reverse()` produces the
+versioned form and anything that builds a URL emits it without being told. The
+same urlconf is mounted again at the bare `/api/`, under distinct instance
+namespaces so which one `reverse()` returns is not left to registration order.
+
+**There is no removal date on the unversioned alias, and none is invented here.**
+Announcing a sunset this project has not decided would be the same fabrication as
+printing a price nobody agreed to — and an unmet deprecation promise teaches
+clients to ignore the next one.
+
+The schema documents v1 only. Both prefixes work; listing every endpoint twice
+leaves a reader choosing between identical entries. A preprocessing hook does the
+filtering, not a hand-written exclude list that would drift.
+
+Tests pin that both answer, that they return **byte-identical** responses (one
+urlconf, not two APIs that resemble each other), and that the alias is not a way
+around authentication or tenant scoping.
+
+### Notifications, and four ways of not sending one
+
+Nine stages of knowing things and telling nobody: campaigns finishing, cards
+declining, quotas nearly spent. Now it says so — carefully.
+
+| Refusal | Why |
+|---|---|
+| No preference, no mail | Defaults are per kind, not all-on. Being told a payment failed is a service; being told every campaign finished is a mailing list. An absent preference means that default, never "yes" |
+| No confirmed address, no mail | Stage 2's rule, applied to our own sending. Mail to an unconfirmed address is at best noise, at worst somebody else's inbox |
+| No duplicates | A unique key per event, and the row is written **before** the mail. The other order sends twice whenever the recording fails |
+| No failure escapes | Every caller is finishing real work. None of them fails because a template was renamed |
+
+Billing news goes to owners and administrators only — a member who cannot change
+the card does not need to be told it was declined. Each recipient gets their own
+idempotency key, or only the first person in the list would ever be told.
+
+The preferences page lists every kind exhaustively and saves **both** answers. An
+unticked checkbox submits nothing, so reading only what arrived would make "off"
+unrepresentable — the customer would turn a setting off and watch it come back.
+
+### Hardening: what the pass actually found
+
+**Performance: nothing.** Every page from Stages 3–9 was already flat — measured
+before touching anything, with one organization and then seven. The Stage 7
+annotations and the billing `select_related` had done their job. So the work was
+not a fix but a guard: `core/tests/test_query_budgets.py` measures each page at
+two data sizes, because a page can sit inside a budget and still be quadratic.
+The budgets are deliberately loose; a test that fails on one legitimate extra
+query is one people raise the number on without reading.
+
+**Security: one real gap.** `FIELD_ENCRYPTION_KEY` and `PAYMENT_WEBHOOK_SECRET`
+were added in Stages 4 and 5 and **neither was registered for log redaction**.
+The first is the key every stored provider credential sits under — leaking it
+turns a database dump from useless into complete. The second signs payment
+webhooks; with it, a stranger can forge a settled invoice.
+
+Both are covered now, but the fix that matters is the guard: a test scans the
+settings for anything that looks like a credential and fails if it is not
+redacted. It immediately found a third — `SECRET_KEY_FALLBACKS`, which holds
+previous signing keys during a rotation — and a fourth problem behind it, that
+`_known_secrets()` only read string values and would have listed that setting
+while silently protecting nothing.
+
+Anything genuinely not a secret goes in an exemption list **with a reason**,
+because "it's fine" is a claim that has to survive somebody reading it later.

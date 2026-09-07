@@ -599,4 +599,50 @@ def finalize_if_complete(campaign: Campaign) -> bool:
     transition(campaign, CampaignStatus.COMPLETED, save=False)
     campaign.save(update_fields=["status", "completed_at", "updated_at"])
     logger.info("Campaign %s completed", campaign.pk)
+
+    # After the state change and outside anything that could undo it. The
+    # campaign is complete whether or not the email about it goes out; notify()
+    # swallows its own failures for exactly that reason.
+    _notify_campaign_finished(campaign)
     return True
+
+
+#: A campaign that fails this much of its audience is a different email from one
+#: that merely finished. Not a hard rule about anything — just the point past
+#: which "your campaign finished" would be a misleading subject line.
+HEAVY_FAILURE_RATIO = 0.25
+
+
+def _notify_campaign_finished(campaign: Campaign) -> None:
+    """Tell the organization how it went, if they asked to be told."""
+    from core.models import NotificationKind
+    from core.notifications import notify_organization
+    from messaging.models import Message
+
+    messages = Message.objects.filter(campaign=campaign)
+    total = messages.count()
+    failed = messages.failed().count()
+
+    heavy = total > 0 and (failed / total) >= HEAVY_FAILURE_RATIO
+    kind = NotificationKind.CAMPAIGN_FAILED if heavy else NotificationKind.CAMPAIGN_FINISHED
+
+    notify_organization(
+        organization=campaign.organization,
+        kind=kind,
+        subject=(
+            f"{campaign.name}: {failed} of {total} messages failed"
+            if heavy
+            else f"{campaign.name} has finished sending"
+        ),
+        template="notifications/campaign_finished.txt",
+        context={
+            "campaign": campaign,
+            "total": total,
+            "failed": failed,
+            "delivered": total - failed,
+            "heavy": heavy,
+        },
+        # One notification per campaign completion, whatever else happens. A
+        # worker retrying the finalize path must not send a second.
+        idempotency_key=f"campaign-finished:{campaign.pk}",
+    )

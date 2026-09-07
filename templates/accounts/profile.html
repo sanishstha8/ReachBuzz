@@ -80,6 +80,38 @@
         </form>
       </div>
     </section>
+
+    <section class="card mt-4" aria-labelledby="notificationsHeading">
+      <div class="card-header bg-transparent">
+        <h2 id="notificationsHeading" class="h6 mb-0">Email notifications</h2>
+      </div>
+      <div class="card-body">
+        <p class="small text-body-secondary">
+          What this system tells you about, by email. Some are switched off until
+          you ask for them; nothing here is sent to an address you have not confirmed.
+        </p>
+
+        <form method="post" novalidate>
+          {% csrf_token %}
+          {% for kind in notification_kinds %}
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox"
+                     name="notifications" value="{{ kind.value }}"
+                     id="notify-{{ kind.value }}"
+                     {% if kind.enabled %}checked{% endif %}>
+              <label class="form-check-label" for="notify-{{ kind.value }}">
+                {{ kind.label }}
+              </label>
+            </div>
+          {% endfor %}
+
+          <button type="submit" name="save_notifications" value="1"
+                  class="btn btn-outline-primary btn-sm mt-2">
+            Save preferences
+          </button>
+        </form>
+      </div>
+    </section>
   </div>
 
 </div>

@@ -397,3 +397,21 @@ def _mark_subscription_past_due(invoice: Invoice) -> None:
     subscription.status = SubscriptionStatus.PAST_DUE
     subscription.save(update_fields=["status", "updated_at"])
     logger.info("Subscription for organization %s is past due", subscription.organization_id)
+
+    # The one notification a customer genuinely needs unasked: their card failed
+    # and they cannot see it from inside the product until an invoice goes
+    # overdue. Owners and administrators only — a member who cannot change the
+    # card does not need to be told it was declined.
+    from core.models import NotificationKind
+    from core.notifications import notify_organization
+
+    notify_organization(
+        organization=subscription.organization,
+        kind=NotificationKind.PAYMENT_FAILED,
+        subject=f"We could not collect payment for invoice {invoice.number}",
+        template="notifications/payment_failed.txt",
+        context={"invoice": invoice, "organization": subscription.organization},
+        # Per invoice, not per attempt: three retries of the same card is one
+        # piece of news, not three.
+        idempotency_key=f"payment-failed:{invoice.pk}",
+    )

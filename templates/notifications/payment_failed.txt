@@ -1,0 +1,14 @@
+Hello {{ user.first_name|default:"there" }},
+
+We could not collect payment for invoice {{ invoice.number }}
+({{ invoice.currency }} {{ invoice.total }}).
+
+Nothing has stopped. Your campaigns keep sending while we sort this out, and we
+will try again before the invoice becomes overdue{% if invoice.due_at %} on {{ invoice.due_at|date:"j F Y" }}{% endif %}.
+
+If the card on file has expired or changed, updating it is the usual fix.
+
+-- {{ brand_name }}
+
+You are receiving this because you are an owner or administrator of
+{{ organization.name }}.

@@ -1,0 +1,13 @@
+Hello,
+
+{% if inviter %}{{ inviter.first_name|default:inviter.email }}{% else %}Somebody{% endif %} has invited you to join {{ organization.name }} on {{ brand_name }}, as {{ invitation.get_role_display|lower }}.
+
+Accept the invitation here:
+
+{{ accept_url }}
+
+The link works once and expires in {{ invitation.expires_at|timeuntil }}. If you
+were not expecting this, you can ignore this email — nothing will be sent to
+you again.
+
+-- {{ brand_name }}

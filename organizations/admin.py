@@ -12,7 +12,7 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 
-from organizations.models import Organization, OrganizationMember
+from organizations.models import Invitation, Organization, OrganizationMember
 
 
 class OrganizationMemberInline(admin.TabularInline):
@@ -56,3 +56,21 @@ class OrganizationMemberAdmin(admin.ModelAdmin):
     list_filter = ("role", "organization")
     search_fields = ("user__email", "organization__name")
     autocomplete_fields = ("user", "organization")
+
+
+@admin.register(Invitation)
+class InvitationAdmin(admin.ModelAdmin):
+    """
+    Read-mostly. Revoking here is the escape hatch for a customer who cannot
+    reach their own members page — the ordinary path is the app itself.
+    """
+
+    list_display = ("email", "organization", "role", "status", "expires_at")
+    list_filter = ("status", "role", "organization")
+    search_fields = ("email", "organization__name")
+    autocomplete_fields = ("organization", "invited_by")
+    readonly_fields = ("token", "accepted_at", "created_at", "updated_at")
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        """Status moves through organizations.invitations, not a form field."""
+        return False

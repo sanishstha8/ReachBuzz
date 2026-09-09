@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block page_subheading %}
+  <p class="app-topbar__subtitle mb-0">Who is in {{ organization.name }}.</p>
+{% endblock %}
+
+{% block content %}
+
+<div class="row g-4">
+  {# ------------------------------------------------------------ members #}
+  <div class="col-12 col-lg-7">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Team</h2>
+
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Email</th>
+                <th scope="col">Role</th>
+                {% if can_manage_members %}<th scope="col"></th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for member in members %}
+                <tr>
+                  <td>
+                    {{ member.user.email }}
+                    {% if member.user == request.user %}<span class="badge text-bg-light border">you</span>{% endif %}
+                  </td>
+                  <td>
+                    <span class="badge {% if member.role == 'owner' %}text-bg-primary{% elif member.role == 'admin' %}text-bg-info{% else %}text-bg-secondary{% endif %}">
+                      {{ member.get_role_display }}
+                    </span>
+                  </td>
+                  {% if can_manage_members %}
+                    <td class="text-end">
+                      {% if not member.is_owner or members|length > 1 %}
+                        <form method="post" action="{% url 'organizations:remove-member' member.pk %}" class="mb-0"
+                              onsubmit="return confirm('Remove {{ member.user.email }} from the team?');">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {# -------------------------------------------------- pending invites #}
+    {% if pending_invitations %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <h2 class="h6 text-body-secondary text-uppercase small mb-3">Pending invitations</h2>
+          <ul class="list-unstyled mb-0">
+            {% for invitation in pending_invitations %}
+              <li class="d-flex justify-content-between align-items-center border-bottom py-2">
+                <div>
+                  <div>{{ invitation.email }}</div>
+                  <div class="small text-body-secondary">
+                    {{ invitation.get_role_display }}
+                    {% if invitation.is_expired %}
+                      <span class="text-danger">&middot; expired</span>
+                    {% else %}
+                      &middot; expires {{ invitation.expires_at|timeuntil }} from now
+                    {% endif %}
+                  </div>
+                </div>
+                {% if can_manage_members %}
+                  <div class="d-flex gap-2">
+                    <form method="post" action="{% url 'organizations:resend-invitation' invitation.pk %}" class="mb-0">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">Resend</button>
+                    </form>
+                    <form method="post" action="{% url 'organizations:revoke-invitation' invitation.pk %}" class="mb-0">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                    </form>
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  {# -------------------------------------------------------------- invite #}
+  <div class="col-12 col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h6 text-body-secondary text-uppercase small mb-3">Invite somebody</h2>
+
+        {% if can_manage_members %}
+          <form method="post" action="{% url 'organizations:invite-member' %}">
+            {% csrf_token %}
+            <div class="mb-3">
+              <label class="form-label" for="{{ invite_form.email.id_for_label }}">Email address</label>
+              {{ invite_form.email }}
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="{{ invite_form.role.id_for_label }}">Role</label>
+              {{ invite_form.role }}
+              <div class="form-text">
+                Administrators can manage billing and the team. Members cannot.
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Send invitation</button>
+          </form>
+        {% else %}
+          <p class="small text-body-tertiary mb-0">
+            Only an owner or administrator can invite people to this organization.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

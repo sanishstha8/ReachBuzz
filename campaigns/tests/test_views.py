@@ -513,3 +513,104 @@ class TestNavigation:
 
         assert reverse("campaigns:list") in body
         assert reverse("whatsapp:template-list") in body
+
+
+class TestTheWizardPicksAChannel:
+    """
+    Step 1 chooses how the campaign goes out.
+
+    It belongs in step 1 and nowhere later: the channel decides which consent
+    the audience is resolved against, so asking after the audience has been
+    picked would silently re-resolve a list the operator has already reviewed.
+    """
+
+    def test_the_choice_is_offered(self, auth_client: Client) -> None:
+        body = auth_client.get(reverse("campaigns:create")).content.decode()
+
+        assert 'name="channel"' in body
+        assert "WhatsApp" in body
+        assert "SMS" in body
+
+    def test_choosing_sms_is_recorded(self, auth_client: Client) -> None:
+        from core.channels import Channel
+
+        auth_client.post(
+            reverse("campaigns:create"),
+            {"name": "Texts", "description": "", "channel": Channel.SMS},
+        )
+
+        assert Campaign.objects.get().channel == Channel.SMS
+
+    def test_omitting_it_still_means_whatsapp(self, auth_client: Client) -> None:
+        """
+        The radio group always submits one, so this only affects a caller that
+        predates the field — and that has to keep meaning what it meant before.
+        """
+        from core.channels import Channel
+
+        auth_client.post(reverse("campaigns:create"), {"name": "Legacy", "description": ""})
+
+        assert Campaign.objects.get().channel == Channel.WHATSAPP
+
+    def test_it_can_be_changed_while_the_campaign_is_a_draft(
+        self, auth_client: Client, make_campaign
+    ) -> None:
+        from core.channels import Channel
+
+        campaign = make_campaign("Undecided")
+
+        auth_client.post(
+            reverse("campaigns:wizard-details", args=[campaign.pk]),
+            {"name": campaign.name, "description": "", "channel": Channel.SMS},
+        )
+
+        campaign.refresh_from_db()
+        assert campaign.channel == Channel.SMS
+
+    def test_it_is_locked_once_the_campaign_is_no_longer_editable(
+        self, make_campaign
+    ) -> None:
+        """
+        The audience was resolved against this channel's consent. Switching it
+        afterwards would attribute a send to people who never agreed to be
+        reached that way.
+        """
+        from campaigns.forms import CampaignDetailsForm
+
+        sent = make_campaign("Already sent", status=CampaignStatus.COMPLETED)
+        assert not sent.is_editable
+
+        form = CampaignDetailsForm(instance=sent)
+
+        assert form.fields["channel"].disabled is True
+
+    def test_it_stays_editable_on_a_draft(self, make_campaign) -> None:
+        from campaigns.forms import CampaignDetailsForm
+
+        form = CampaignDetailsForm(instance=make_campaign("Still a draft"))
+
+        assert form.fields["channel"].disabled is False
+
+    def test_the_audience_step_follows_the_choice(
+        self, auth_client: Client, make_contact, group
+    ) -> None:
+        """End to end: an SMS campaign resolves against SMS consent, not WhatsApp."""
+        from campaigns import services
+        from contacts.models import GroupMembership
+        from contacts.services import set_consent
+        from core.channels import Channel
+
+        whatsapp_only = make_contact("WhatsApp only", "+9779800000051", opted_in=True)
+        texter = make_contact("Texts fine", "+9779800000052", opted_in=False)
+        set_consent(texter, opted_in=True, channel=Channel.SMS)
+        for contact in (whatsapp_only, texter):
+            GroupMembership.objects.create(group=group, contact=contact)
+
+        auth_client.post(
+            reverse("campaigns:create"),
+            {"name": "Texts", "description": "", "channel": Channel.SMS},
+        )
+        campaign = Campaign.objects.get()
+        services.set_audience(campaign, [group])
+
+        assert set(services.resolve_audience(campaign)) == {texter}

@@ -29,6 +29,26 @@
             {% endif %}
           </div>
 
+          <fieldset class="mb-3">
+            <legend class="form-label mb-2">
+              Send over <span class="text-danger" aria-hidden="true">*</span>
+            </legend>
+            <div class="d-flex flex-wrap gap-3">
+              {% for choice in form.channel %}
+                <div class="form-check">
+                  {{ choice.tag }}
+                  <label class="form-check-label" for="{{ choice.id_for_label }}">
+                    {{ choice.choice_label }}
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+            <div class="form-text">{{ form.channel.help_text }}</div>
+            {% if form.channel.errors %}
+              <div class="invalid-feedback d-block">{{ form.channel|field_errors }}</div>
+            {% endif %}
+          </fieldset>
+
           <div class="mb-4">
             <label class="form-label" for="{{ form.description.id_for_label }}">Description</label>
             {{ form.description }}

@@ -1846,9 +1846,16 @@ retry path that has never run is a retry path that does not work.
 ### Not in this stage
 
 No per-organization SMS sender ids (there is one installation-wide `SMS_SENDER_ID`),
-no delivery-receipt webhook endpoint for SMS, no per-channel plan limits, and no
-UI for choosing a channel when creating a campaign — `Campaign.channel` is set in
-the admin or the API. Each is a small piece; none of them is the abstraction.
+no delivery-receipt webhook endpoint for SMS, and no per-channel plan limits —
+WhatsApp and SMS count against one pool though they cost quite differently. Each
+is a small piece; none of them is the abstraction.
+
+The channel picker landed shortly after the stage: step 1 of the campaign wizard
+now chooses it. Step 1 and not later, because the channel decides which consent
+the audience is resolved against — asking after the audience had been chosen
+would silently re-resolve a list the operator had already reviewed. It is locked
+once the campaign is no longer editable, since switching it then would attribute
+a send to people who never agreed to be reached that way.
 
 ---
 

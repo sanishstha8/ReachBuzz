@@ -8,16 +8,26 @@ from django.conf import settings
 from campaigns.models import Campaign, CampaignMessageType
 from campaigns.variables import ALLOWED_CONTACT_FIELDS
 from contacts.models import ContactGroup
+from core.channels import DEFAULT_CHANNEL
 from whatsapp.models import MessageTemplate
 
 
 class CampaignDetailsForm(forms.ModelForm):
-    """Step 1 — name the campaign."""
+    """
+    Step 1 — name the campaign and choose how it goes out.
+
+    The channel belongs in step 1 and nowhere later. It decides which consent
+    the audience is resolved against, so asking after the audience has been
+    picked would mean silently re-resolving a list somebody has already
+    reviewed — and a campaign whose recipients changed while the operator was
+    not looking is exactly the surprise this wizard exists to prevent.
+    """
 
     class Meta:
         model = Campaign
-        fields = ("name", "description")
+        fields = ("name", "channel", "description")
         widgets = {
+            "channel": forms.RadioSelect(),
             "name": forms.TextInput(
                 attrs={"class": "form-control form-control-lg", "autofocus": True,
                        "placeholder": "e.g. Summer Sale announcement"}
@@ -27,6 +37,31 @@ class CampaignDetailsForm(forms.ModelForm):
                        "placeholder": "What this campaign is for (optional)"}
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Radio buttons, not a dropdown: two options, and the choice changes who
+        # receives the campaign. A select box hides the alternative behind a
+        # click, which is the wrong weight for a decision like that.
+        self.fields["channel"].empty_label = None
+        self.fields["channel"].initial = DEFAULT_CHANNEL
+        # Not required, and it falls back to WhatsApp when absent. The radio
+        # group always submits one, so this only affects a caller that predates
+        # the field — which must keep meaning exactly what it meant before.
+        self.fields["channel"].required = False
+        self.fields["channel"].help_text = (
+            "Consent is recorded per channel, so this decides who is eligible. "
+            "It cannot be changed once the campaign has been sent."
+        )
+
+        # Locked after launch. The audience was resolved against this channel's
+        # consent, so switching it afterwards would attribute a send to people
+        # who never agreed to be reached that way.
+        if self.instance.pk and not self.instance.is_editable:
+            self.fields["channel"].disabled = True
+
+    def clean_channel(self) -> str:
+        return self.cleaned_data.get("channel") or DEFAULT_CHANNEL
 
     def clean_name(self) -> str:
         name = (self.cleaned_data.get("name") or "").strip()

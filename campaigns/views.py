@@ -201,6 +201,7 @@ class CampaignCreateView(CapabilityRequiredMixin, WizardContextMixin, PageTitleM
             organization=self.organization,
             name=form.cleaned_data["name"],
             description=form.cleaned_data.get("description", ""),
+            channel=form.cleaned_data["channel"],
             user=self.request.user,
             request=self.request,
         )

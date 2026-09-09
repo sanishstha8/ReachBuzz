@@ -30,7 +30,7 @@ from campaigns.models import (
 )
 from contacts.models import Contact, ContactGroup, ContactStatus
 from core.audit import record_audit
-from core.channels import Channel, label_for
+from core.channels import DEFAULT_CHANNEL, Channel, label_for
 from core.exceptions import InvalidStateTransition, ValidationFailed
 from core.models import AuditAction
 from messaging import routing
@@ -315,17 +315,27 @@ def create_campaign(
     *,
     name: str,
     description: str = "",
+    channel: str = DEFAULT_CHANNEL,
     organization=None,
     user=None,
     request: HttpRequest | None = None,
 ) -> Campaign:
-    """Create a draft campaign. The wizard fills in the rest step by step."""
+    """
+    Create a draft campaign. The wizard fills in the rest step by step.
+
+    ``channel`` defaults to WhatsApp, so every caller written before there was a
+    choice keeps its meaning exactly.
+    """
     name = (name or "").strip()
     if not name:
         raise ValidationFailed("A campaign name is required.", details={"name": ["Enter a name."]})
 
     campaign = Campaign.objects.create(
-        name=name, description=description or "", organization=organization, created_by=user
+        name=name,
+        description=description or "",
+        channel=channel or DEFAULT_CHANNEL,
+        organization=organization,
+        created_by=user
     )
 
     record_audit(

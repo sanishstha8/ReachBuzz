@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block body_class %}auth-shell{% endblock %}
+
+{% block layout %}
+<main id="main-content" class="auth-wrapper">
+  <section class="auth-card" style="max-width: 30rem;" aria-labelledby="acceptHeading">
+    <div class="auth-card__brand">
+      <i class="bi bi-whatsapp" aria-hidden="true"></i>
+      <span>{{ brand_name }}</span>
+    </div>
+
+    <h1 id="acceptHeading" class="h4 mb-1">Join {{ invitation.organization.name }}</h1>
+    <p class="text-body-secondary mb-4">
+      You have been invited as {{ invitation.get_role_display|lower }}, at
+      <strong>{{ invitation.email }}</strong>.
+    </p>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% if signed_in_as_someone_else %}
+      <div class="alert alert-warning" role="alert">
+        You are signed in as {{ request.user.email }}. Sign out to accept an
+        invitation sent to {{ invitation.email }}.
+      </div>
+      <a href="{% url 'accounts:logout' %}" class="btn btn-outline-secondary w-100">Sign out</a>
+
+    {% elif request.user.is_authenticated %}
+      {# Already signed in as the invited address — one click, no form. #}
+      <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary w-100">
+          Accept and join {{ invitation.organization.name }}
+        </button>
+      </form>
+
+    {% elif existing_user %}
+      {# An account exists for this address, but nobody is signed in as it. #}
+      <p class="mb-3">
+        An account already exists for {{ invitation.email }}.
+      </p>
+      <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="btn btn-primary w-100">
+        Sign in to accept
+      </a>
+
+    {% else %}
+      {# A stranger. Creating the account and accepting happen in one step. #}
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger" role="alert">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <form method="post" novalidate>
+        {% csrf_token %}
+
+        <div class="row g-3">
+          <div class="col-sm-6">
+            {% include "accounts/_auth_field.html" with field=form.first_name %}
+          </div>
+          <div class="col-sm-6">
+            {% include "accounts/_auth_field.html" with field=form.last_name %}
+          </div>
+        </div>
+
+        {% include "accounts/_auth_field.html" with field=form.password1 %}
+        {% include "accounts/_auth_field.html" with field=form.password2 %}
+
+        <button type="submit" class="btn btn-primary w-100 mt-2">
+          Create my account and join
+        </button>
+      </form>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

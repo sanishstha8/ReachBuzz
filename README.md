@@ -52,7 +52,8 @@ Business Platform Cloud API**.
 31. [The backoffice](#31-the-backoffice)
 32. [Channels and SMS](#32-channels-and-sms)
 33. [Versioning, notifications and hardening](#33-versioning-notifications-and-hardening)
-34. [Before you go live](#34-before-you-go-live)
+34. [Team invitations](#34-team-invitations)
+35. [Before you go live](#35-before-you-go-live)
 
 ---
 
@@ -1933,7 +1934,73 @@ because "it's fine" is a claim that has to survive somebody reading it later.
 
 ---
 
-## 34. Before you go live
+## 34. Team invitations
+
+Not one of the nine SaaS stages — built afterward, closing a gap the stages
+themselves had opened. `max_team_members` was enforced since Stage 3 and shown
+on a progress bar since Stage 6, for a capability that did not exist: an
+organization was one person until somebody edited it in the Django admin.
+
+### An invitation creates nothing until it is accepted
+
+Sending one is not consent to anything from the recipient, so nothing about
+them is created at that point — the address may not even have an account.
+`Invitation` is its own row, not a placeholder `User`, holding an email, a
+role, and an opaque token.
+
+**Not a signed token.** This project's other one-time links
+(`EmailVerificationTokenGenerator`, Django's password reset) hash a *user's*
+current state, which only works once a user row exists to hash. An invitation
+is mailed to somebody who may not have an account, so there is nothing to
+hash against — the token has to be the thing that proves the invitation,
+stored and looked up rather than recomputed.
+
+**Accepting *is* the email confirmation.** Following a link mailed to an
+address is exactly what Stage 2's verification already treats as proof of
+holding it, so a new account created at acceptance is marked verified
+immediately — asking for a second confirmation would ask somebody to prove
+what accepting the invitation just proved.
+
+### A seat is checked twice
+
+Once when the invitation is sent, counted against members **plus other
+pending invitations** — checking members alone would let an organization at
+its ceiling send unlimited invitations that then race each other at
+acceptance. Once again when it is accepted, because a plan can change or
+other seats can fill in the time between, and accepting is the moment a seat
+is actually spent.
+
+### Two things that must never become possible
+
+**Ownership is never sent by email.** An invitation may offer Administrator
+or Member; `OrganizationRole.OWNER` is refused at the service layer with a
+message that says why, not by its absence from a list somebody could extend
+without reading this.
+
+**An organization can never be left with no owner.** Removing the last owner
+is refused the same way registration's atomic transaction makes the opposite
+state — an owner with no organization — unreachable from the other
+direction.
+
+### Same split as billing
+
+Any member reads the team list; only an owner or administrator invites,
+resends, revokes, or removes — reusing `OrganizationMember.can_administer`
+rather than inventing a second notion of who is in charge.
+
+### The one public route in this app
+
+`/organization/invitations/<token>/accept/` is reached from an email, by
+someone who may not be signed in at all. Three shapes, one page: already
+signed in as the invited address (one click), an account exists but nobody
+is signed in as it (sent to log in, with `?next=` back here), or a stranger
+(a short form creates the account and accepts in the same step). Someone
+signed in as a *different* address is told to sign out rather than the
+invitation silently doing nothing for them.
+
+---
+
+## 35. Before you go live
 
 Every stage is built and every test passes. **Neither of those facts means this
 is ready to take real customers**, and the gap between them is entirely made of
@@ -1998,9 +2065,8 @@ sender ID, and in several countries regulatory paperwork.
 
 ### Things deliberately not built
 
-Team invitations · Meta Embedded Signup · PDF invoices · tax calculation ·
-refund initiation from our side · per-organization SMS sender IDs · per-channel
-plan limits · a channel picker in the campaign wizard.
+Meta Embedded Signup · PDF invoices · tax calculation · refund initiation from
+our side · per-organization SMS sender IDs · per-channel plan limits.
 
 Each is a small, well-understood piece. None of them is an abstraction that
 would need to change first — which is the useful thing to know about a list of

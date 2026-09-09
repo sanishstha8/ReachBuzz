@@ -30,6 +30,7 @@ urlpatterns = [
     path("campaigns/", include("campaigns.urls", namespace="campaigns")),
     path("templates/", include("whatsapp.urls", namespace="whatsapp")),
     path("billing/", include("billing.urls", namespace="billing")),
+    path("organization/", include("organizations.urls", namespace="organizations")),
     # Staff only, and the only place in the application that reads across the
     # tenant boundary on purpose. See backoffice/access.py.
     path("backoffice/", include("backoffice.urls", namespace="backoffice")),

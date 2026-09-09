@@ -80,6 +80,14 @@ class AuditAction(models.TextChoices):
     # "who has looked at this customer?" needs an answer.
     BACKOFFICE_VIEWED = "backoffice_viewed", "Customer account viewed by staff"
 
+    # Team membership. An organization's seats are billed and limited, so who
+    # was invited, who accepted, and who was removed needs the same trail as
+    # anything else that changes what a customer is entitled to.
+    MEMBER_INVITED = "member_invited", "Invited a team member"
+    INVITATION_ACCEPTED = "invitation_accepted", "Accepted an invitation"
+    INVITATION_REVOKED = "invitation_revoked", "Revoked an invitation"
+    MEMBER_REMOVED = "member_removed", "Removed a team member"
+
 
 class AuditLog(UUIDPrimaryKeyModel):
     """

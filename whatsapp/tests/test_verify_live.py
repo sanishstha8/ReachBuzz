@@ -208,6 +208,9 @@ class TestConsentCannotBeBypassed:
         message = str(exc_info.value)
         assert "create_contact" in message
         assert "opted_in=True" in message
+        # A contact cannot be saved without a tenant, so a suggestion that
+        # omitted one would fail for anybody who followed it.
+        assert "organization=" in message
 
     def test_an_unparseable_number_is_refused_clearly(self) -> None:
         with pytest.raises(CommandError, match="not a usable phone number"):
@@ -240,3 +243,81 @@ class TestTemplateSelection:
 
         with pytest.raises(CommandError, match="No approved template is mirrored"):
             run(to="+9779800003333")
+
+
+class TestTheRealSend:
+    """
+    The path every refusal above stands in front of.
+
+    It launches through the ordinary campaign services, so what it creates has
+    to belong to a tenant like everything else those services create. Nothing
+    covered it until it was found to fail on the first real run.
+    """
+
+    MESSAGES_URL = "https://graph.facebook.com/vTEST/123/messages"
+
+    @pytest.fixture(autouse=True)
+    def meta_accepts(self, meta, http, approved_template):
+        http.add(responses.GET, TEMPLATES_URL, json={"data": [approved_payload()]}, status=200)
+        http.add(
+            responses.POST,
+            self.MESSAGES_URL,
+            json={"messaging_product": "whatsapp", "messages": [{"id": "wamid.LIVE"}]},
+            status=200,
+        )
+
+    def test_a_consenting_contact_is_sent_one_message(
+        self, make_contact, organization, django_capture_on_commit_callbacks
+    ) -> None:
+        from campaigns.models import Campaign
+        from contacts.models import ContactGroup
+        from messaging.models import Message, MessageStatus
+
+        contact = make_contact("Consenting", "+9779800003333", opted_in=True)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            run(to="+9779800003333", yes=True, wait=0)
+
+        campaign = Campaign.objects.get()
+        assert campaign.organization == organization
+        assert ContactGroup.objects.get(name="Live verification").organization == organization
+
+        message = Message.objects.get()
+        assert message.contact == contact
+        assert message.status == MessageStatus.SENT
+        assert message.provider_message_id == "wamid.LIVE"
+
+    def test_a_second_run_reuses_the_verification_group(
+        self, make_contact, http, django_capture_on_commit_callbacks
+    ) -> None:
+        from contacts.models import ContactGroup
+
+        # Meta issues a fresh wamid per send; ours are unique per message.
+        http.add(
+            responses.POST,
+            self.MESSAGES_URL,
+            json={"messaging_product": "whatsapp", "messages": [{"id": "wamid.LIVE2"}]},
+            status=200,
+        )
+        make_contact("Consenting", "+9779800003333", opted_in=True)
+
+        with django_capture_on_commit_callbacks(execute=True):
+            run(to="+9779800003333", yes=True, wait=0)
+        with django_capture_on_commit_callbacks(execute=True):
+            run(to="+9779800003333", yes=True, wait=0)
+
+        assert ContactGroup.objects.filter(name="Live verification").count() == 1
+
+    def test_consent_given_to_another_organization_is_not_consent_here(
+        self, make_contact, other_organization
+    ) -> None:
+        from campaigns.models import Campaign
+
+        make_contact(
+            "Elsewhere", "+9779800003333", opted_in=True, organization=other_organization
+        )
+
+        with pytest.raises(CommandError, match="not an opted-in, active contact in Test Organization"):
+            run(to="+9779800003333", yes=True, wait=0)
+
+        assert not Campaign.objects.exists()

@@ -168,18 +168,20 @@ class Command(BaseCommand):
 
     def _organization(self):
         """
-        Whose templates to sync into.
+        Whose templates to sync into, and whose contact to send to.
 
         A command line has no session, so this takes the first active
         organization — unambiguous while a deployment has one, and the single
-        place to add a --organization flag when that stops being true.
+        place to add a --organization flag when that stops being true. The sync
+        and the send must agree on it: a template mirrored into one tenant is
+        not one another tenant's campaign may use.
         """
         from organizations.models import Organization
 
         organization = Organization.objects.active().order_by("created_at").first()
         if organization is None:
             raise CommandError(
-                "No active organization exists to sync templates into. "
+                "No active organization exists to verify against. "
                 "Create one before running this."
             )
         return organization
@@ -260,8 +262,9 @@ class Command(BaseCommand):
         from campaigns.models import CampaignMessageType
         from core.exceptions import DomainError
 
-        contact = self._resolve_recipient(to)
-        template = self._resolve_template(template_name)
+        organization = self._organization()
+        contact = self._resolve_recipient(to, organization)
+        template = self._resolve_template(template_name, organization)
 
         if not assume_yes:
             self.stdout.write("")
@@ -275,7 +278,7 @@ class Command(BaseCommand):
                 return self.report(SKIP, "Send a real message", "Cancelled.")
 
         try:
-            campaign = self._launch(contact, template, CampaignMessageType.TEMPLATE)
+            campaign = self._launch(organization, contact, template, CampaignMessageType.TEMPLATE)
         except DomainError as exc:
             return self.report(FAIL, "Send a real message", exc.message)
 
@@ -286,14 +289,15 @@ class Command(BaseCommand):
         self.stdout.write("")
         return self._await_delivery(message, wait)
 
-    def _resolve_recipient(self, to: str):
+    def _resolve_recipient(self, to: str, organization):
         """
         The recipient must be a contact who has consented. No override.
 
         Adding your own number as a consenting contact is a true statement and
         an audited one. A flag that skipped this would be a way to message
         someone without consent, which is the one thing this system does not
-        have.
+        have. Consent is recorded per organization, so a number that consented
+        to another tenant has not consented to this one.
         """
         from contacts.models import Contact
         from core.phone import PhoneNumberError, normalize_phone_number
@@ -303,21 +307,29 @@ class Command(BaseCommand):
         except PhoneNumberError as exc:
             raise CommandError(f"{to} is not a usable phone number: {exc}") from exc
 
-        contact = Contact.objects.eligible().filter(phone_number=number).first()
+        contact = (
+            Contact.objects.for_organization(organization)
+            .eligible()
+            .filter(phone_number=number)
+            .first()
+        )
         if contact is None:
             raise CommandError(
-                f"{number} is not an opted-in, active contact, so it cannot be messaged.\n"
+                f"{number} is not an opted-in, active contact in {organization.name}, "
+                "so it cannot be messaged.\n"
                 "Add it as a contact and record consent first — through the UI, or:\n"
                 "  python manage.py shell -c \"from contacts.services import create_contact; "
+                "from organizations.models import Organization; "
                 f"create_contact(name='Verification', phone_number='{number}', "
-                "opted_in=True, opt_in_source='manual')\""
+                "opted_in=True, opt_in_source='manual', "
+                f"organization=Organization.objects.get(pk='{organization.pk}'))\""
             )
         return contact
 
-    def _resolve_template(self, name: str):
+    def _resolve_template(self, name: str, organization):
         from whatsapp.models import MessageTemplate
 
-        queryset = MessageTemplate.objects.filter(status="approved", source="synced")
+        queryset = MessageTemplate.objects.for_organization(organization).approved()
         if name:
             template = queryset.filter(name=name).first()
             if template is None:
@@ -335,7 +347,7 @@ class Command(BaseCommand):
             )
         return template
 
-    def _launch(self, contact, template, message_type):
+    def _launch(self, organization, contact, template, message_type):
         """Build and launch a one-recipient campaign through the ordinary path."""
         from campaigns.services import (
             create_campaign,
@@ -346,13 +358,18 @@ class Command(BaseCommand):
         from contacts.models import ContactGroup, GroupMembership
 
         group, _ = ContactGroup.objects.get_or_create(
+            organization=organization,
             name="Live verification",
             defaults={"description": "Recipients of `manage.py verify_live` checks."},
         )
         GroupMembership.objects.get_or_create(group=group, contact=contact)
 
         stamp = timezone.localtime().strftime("%Y-%m-%d %H:%M")
-        campaign = create_campaign(name=f"Live verification {stamp}", description="verify_live")
+        campaign = create_campaign(
+            name=f"Live verification {stamp}",
+            description="verify_live",
+            organization=organization,
+        )
         set_audience(campaign, [group])
         set_message(
             campaign,
